@@ -66,6 +66,7 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("--no-bundle");
     expect(workflow).toContain("STATIC_VCRUNTIME");
     expect(workflow).toContain("git rev-list --objects --all");
+    expect(workflow).toContain("$global:LASTEXITCODE = 0");
     expect(workflow).toContain("release:");
     expect(runtime.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     expect(runtime.architecture).toBe("x64");

@@ -135,14 +135,14 @@ export function AnnotationWorkspace({
       if (!activeUnit) return;
       const shortcut = event.key.toLowerCase();
       const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
-      if (!hasModifier && shortcut === "t") {
+      if (!hasModifier && shortcut === "1") {
         event.preventDefault();
         onCommit(activeUnit.id, "true", activeUnit.sourceFields);
         advanceFrom(activeUnit.id);
       }
-      if (!hasModifier && (shortcut === "f" || shortcut === "o")) {
+      if (!hasModifier && (shortcut === "2" || shortcut === "3")) {
         event.preventDefault();
-        document.getElementById(`${activeUnit.id}-${shortcut === "f" ? "false" : "other"}`)?.click();
+        document.getElementById(`${activeUnit.id}-${shortcut === "2" ? "false" : "other"}`)?.click();
       }
       if (event.code === "Space") {
         event.preventDefault();
@@ -206,13 +206,13 @@ export function AnnotationWorkspace({
         <div className="workspace-toolbar">
           <section className="header-shortcuts" role="region" aria-label="快捷键说明">
             <span className="shortcut-heading">快捷键</span>
-            <span className="shortcut-item"><span>True</span><kbd>T</kbd></span>
+            <span className="shortcut-item"><span>True</span><kbd>1</kbd></span>
             <span className="shortcut-separator" aria-hidden="true">·</span>
-            <span className="shortcut-item"><span>False</span><kbd>F</kbd></span>
+            <span className="shortcut-item"><span>False</span><kbd>2</kbd></span>
             <span className="shortcut-separator" aria-hidden="true">·</span>
-            <span className="shortcut-item"><span>Other</span><kbd>O</kbd></span>
+            <span className="shortcut-item"><span>Other</span><kbd>3</kbd></span>
             <span className="shortcut-separator" aria-hidden="true">·</span>
-            <span className="shortcut-item"><span>保存 False</span><kbd>⌘↵ / Ctrl+↵</kbd></span>
+            <span className="shortcut-item"><span>保存 False</span><kbd>⌘S / Ctrl+S</kbd></span>
             <span className="shortcut-separator" aria-hidden="true">·</span>
             <span className="shortcut-item"><span>播放</span><kbd>Space</kbd></span>
           </section>
@@ -361,7 +361,7 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
   };
 
   const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const saveShortcut = event.key === "Enter"
+    const saveShortcut = event.key.toLowerCase() === "s"
       && (event.metaKey || event.ctrlKey)
       && !event.altKey;
     if (!saveShortcut) return;

@@ -50,6 +50,7 @@ jobs:
             if ($LASTEXITCODE -eq 0) { throw "Private path or dataset identifier found: $privateText" }
             if ($LASTEXITCODE -ne 1) { throw "git grep failed with exit code $LASTEXITCODE" }
           }
+          $global:LASTEXITCODE = 0
 
       - name: Test frontend
         run: npm run test:run

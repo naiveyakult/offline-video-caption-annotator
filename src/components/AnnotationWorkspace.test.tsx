@@ -59,10 +59,10 @@ describe("AnnotationWorkspace", () => {
 
     const guide = screen.getByRole("region", { name: "快捷键说明" });
     expect(guide.closest("header")).toBeInTheDocument();
-    expect(guide).toHaveTextContent("TrueT");
-    expect(guide).toHaveTextContent("FalseF");
-    expect(guide).toHaveTextContent("OtherO");
-    expect(guide).toHaveTextContent("保存 False⌘↵ / Ctrl+↵");
+    expect(guide).toHaveTextContent("True1");
+    expect(guide).toHaveTextContent("False2");
+    expect(guide).toHaveTextContent("Other3");
+    expect(guide).toHaveTextContent("保存 False⌘S / Ctrl+S");
     expect(guide).toHaveTextContent("播放Space");
 
     const fontGroup = screen.getByRole("group", { name: "标注字号" });
@@ -71,21 +71,21 @@ describe("AnnotationWorkspace", () => {
     expect(within(fontGroup).getByRole("button", { name: "大号 16px" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("uses T, F and O for True, False and Other", () => {
+  it("uses 1, 2 and 3 for True, False and Other", () => {
     const { onCommit } = renderWorkspace();
 
-    fireEvent.keyDown(window, { key: "t" });
+    fireEvent.keyDown(window, { key: "1" });
     expect(onCommit).toHaveBeenCalledWith(
       "overview.overall_visual_style",
       "true",
       { overall_visual_style: "Cinematic natural light." },
     );
 
-    fireEvent.keyDown(window, { key: "f" });
+    fireEvent.keyDown(window, { key: "2" });
     const editor = screen.getByLabelText("修订 overall_audio_style");
     expect(editor).toBeInTheDocument();
 
-    fireEvent.keyDown(window, { key: "o" });
+    fireEvent.keyDown(window, { key: "3" });
     expect(onCommit).toHaveBeenCalledWith(
       "overview.overall_audio_style",
       "other",
@@ -94,15 +94,15 @@ describe("AnnotationWorkspace", () => {
   });
 
   it.each([
-    ["Ctrl+Enter", { ctrlKey: true }],
-    ["Command+Enter", { metaKey: true }],
+    ["Ctrl+S", { ctrlKey: true }],
+    ["Command+S", { metaKey: true }],
   ])("saves the focused changed False editor with %s", (_label, modifier) => {
     const { onCommit } = renderWorkspace();
-    fireEvent.keyDown(window, { key: "f" });
+    fireEvent.keyDown(window, { key: "2" });
     const editor = screen.getByLabelText("修订 overall_visual_style");
     fireEvent.change(editor, { target: { value: "Corrected style." } });
 
-    fireEvent.keyDown(editor, { key: "Enter", ...modifier });
+    fireEvent.keyDown(editor, { key: "s", ...modifier });
 
     expect(onCommit).toHaveBeenCalledWith(
       "overview.overall_visual_style",
@@ -113,26 +113,26 @@ describe("AnnotationWorkspace", () => {
 
   it("does not save an unchanged or unfocused False editor", () => {
     const { onCommit } = renderWorkspace();
-    fireEvent.keyDown(window, { key: "f" });
+    fireEvent.keyDown(window, { key: "2" });
     const editor = screen.getByLabelText("修订 overall_visual_style");
 
-    fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
     fireEvent.change(editor, { target: { value: "Corrected style." } });
-    fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
 
     expect(onCommit).not.toHaveBeenCalled();
   });
 
-  it("keeps plain T/F/O/Space as normal input while an editor is focused", async () => {
+  it("keeps plain s and 1/2/3/Space as normal input while an editor is focused", async () => {
     const user = userEvent.setup();
     const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     const { onCommit } = renderWorkspace();
-    fireEvent.keyDown(window, { key: "f" });
+    fireEvent.keyDown(window, { key: "2" });
     const editor = screen.getByLabelText("修订 overall_visual_style");
     await user.click(editor);
-    await user.type(editor, "tfo ");
+    await user.type(editor, "s123 ");
 
-    expect(editor).toHaveValue("Cinematic natural light.tfo ");
+    expect(editor).toHaveValue("Cinematic natural light.s123 ");
     expect(onCommit).not.toHaveBeenCalled();
     expect(play).not.toHaveBeenCalled();
   });
