@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { parseVideoDocument } from "../domain/annotation";
@@ -19,17 +19,25 @@ const task: ProjectTask = {
   document: parseVideoDocument(JSON.stringify(captionFixture)),
 };
 
-function renderWorkspace(overrides: Partial<ProjectTask> = {}, onCommit = vi.fn(), onDraft = vi.fn()) {
+function renderWorkspace(
+  overrides: Partial<ProjectTask> = {},
+  onCommit = vi.fn(),
+  onDraft = vi.fn(),
+  annotationFontSize: 12 | 14 | 16 = 14,
+  onAnnotationFontSizeChange = vi.fn(),
+) {
   render(
     <AnnotationWorkspace
       task={{ ...task, ...overrides }}
+      annotationFontSize={annotationFontSize}
       onBack={vi.fn()}
       onCommit={onCommit}
       onDraft={onDraft}
       onVideoPosition={vi.fn()}
+      onAnnotationFontSizeChange={onAnnotationFontSizeChange}
     />,
   );
-  return { onCommit, onDraft };
+  return { onCommit, onDraft, onAnnotationFontSizeChange };
 }
 
 describe("AnnotationWorkspace", () => {
@@ -46,18 +54,24 @@ describe("AnnotationWorkspace", () => {
     expect(screen.queryByText("Other：人物或事件本身存在严重错误，无需修改文本。")).not.toBeInTheDocument();
   });
 
-  it("shows distinct shortcut guidance in the video-side empty area", () => {
+  it("shows the fixed shortcuts and font controls in the workspace header", () => {
     renderWorkspace();
 
     const guide = screen.getByRole("region", { name: "快捷键说明" });
-    expect(guide).toHaveTextContent("TTrue");
-    expect(guide).toHaveTextContent("FFalse");
-    expect(guide).toHaveTextContent("OOther");
-    expect(guide).toHaveTextContent("Ctrl / Cmd + Enter保存 False 修订");
-    expect(guide).toHaveTextContent("Space播放 / 暂停");
+    expect(guide.closest("header")).toBeInTheDocument();
+    expect(guide).toHaveTextContent("TrueT");
+    expect(guide).toHaveTextContent("FalseF");
+    expect(guide).toHaveTextContent("OtherO");
+    expect(guide).toHaveTextContent("保存 False⌘↵ / Ctrl+↵");
+    expect(guide).toHaveTextContent("播放Space");
+
+    const fontGroup = screen.getByRole("group", { name: "标注字号" });
+    expect(within(fontGroup).getByRole("button", { name: "小号 12px" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(fontGroup).getByRole("button", { name: "标准 14px" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(fontGroup).getByRole("button", { name: "大号 16px" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("uses T, F, O and Ctrl/Cmd+Enter as non-conflicting shortcuts", () => {
+  it("uses T, F and O for True, False and Other", () => {
     const { onCommit } = renderWorkspace();
 
     fireEvent.keyDown(window, { key: "t" });
@@ -69,20 +83,69 @@ describe("AnnotationWorkspace", () => {
 
     fireEvent.keyDown(window, { key: "f" });
     const editor = screen.getByLabelText("修订 overall_audio_style");
-    fireEvent.change(editor, { target: { value: "Corrected audio style." } });
-    fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
-    expect(onCommit).toHaveBeenCalledWith(
-      "overview.overall_audio_style",
-      "false",
-      { overall_audio_style: "Corrected audio style." },
-    );
+    expect(editor).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: "o" });
     expect(onCommit).toHaveBeenCalledWith(
-      "overview.character_profiles.0",
+      "overview.overall_audio_style",
       "other",
-      { profile: "Alice - A calm woman." },
+      { overall_audio_style: "Quiet forest ambience." },
     );
+  });
+
+  it.each([
+    ["Ctrl+Enter", { ctrlKey: true }],
+    ["Command+Enter", { metaKey: true }],
+  ])("saves the focused changed False editor with %s", (_label, modifier) => {
+    const { onCommit } = renderWorkspace();
+    fireEvent.keyDown(window, { key: "f" });
+    const editor = screen.getByLabelText("修订 overall_visual_style");
+    fireEvent.change(editor, { target: { value: "Corrected style." } });
+
+    fireEvent.keyDown(editor, { key: "Enter", ...modifier });
+
+    expect(onCommit).toHaveBeenCalledWith(
+      "overview.overall_visual_style",
+      "false",
+      { overall_visual_style: "Corrected style." },
+    );
+  });
+
+  it("does not save an unchanged or unfocused False editor", () => {
+    const { onCommit } = renderWorkspace();
+    fireEvent.keyDown(window, { key: "f" });
+    const editor = screen.getByLabelText("修订 overall_visual_style");
+
+    fireEvent.keyDown(editor, { key: "Enter", ctrlKey: true });
+    fireEvent.change(editor, { target: { value: "Corrected style." } });
+    fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("keeps plain T/F/O/Space as normal input while an editor is focused", async () => {
+    const user = userEvent.setup();
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const { onCommit } = renderWorkspace();
+    fireEvent.keyDown(window, { key: "f" });
+    const editor = screen.getByLabelText("修订 overall_visual_style");
+    await user.click(editor);
+    await user.type(editor, "tfo ");
+
+    expect(editor).toHaveValue("Cinematic natural light.tfo ");
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("applies and changes only the controlled annotation font size", async () => {
+    const user = userEvent.setup();
+    const onFontSizeChange = vi.fn();
+    const { onAnnotationFontSizeChange } = renderWorkspace({}, vi.fn(), vi.fn(), 14, onFontSizeChange);
+    const workspace = screen.getByRole("main");
+
+    expect(workspace.style.getPropertyValue("--annotation-font-size")).toBe("14px");
+    await user.click(screen.getByRole("button", { name: "大号 16px" }));
+    expect(onAnnotationFontSizeChange).toHaveBeenCalledWith(16);
   });
 
   it("opens an English-only editor for False and requires a changed field", async () => {
@@ -190,10 +253,12 @@ describe("AnnotationWorkspace", () => {
     render(
       <AnnotationWorkspace
         task={task}
+        annotationFontSize={14}
         onBack={vi.fn()}
         onCommit={vi.fn()}
         onDraft={vi.fn()}
         onVideoPosition={onVideoPosition}
+        onAnnotationFontSizeChange={vi.fn()}
       />,
     );
     const video = document.querySelector("video")!;

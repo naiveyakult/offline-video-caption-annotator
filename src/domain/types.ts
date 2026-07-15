@@ -1,5 +1,6 @@
 export type Theme = "overview" | "storyline" | "speech_transcript";
 export type Decision = "pending" | "true" | "false" | "other";
+export type AnnotationFontSize = 12 | 14 | 16;
 
 export interface VideoDocument {
   caption_en: string;

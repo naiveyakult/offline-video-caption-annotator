@@ -13,10 +13,12 @@ import {
 
 export default function App() {
   const annotatorId = useAppStore((state) => state.annotatorId);
+  const annotationFontSize = useAppStore((state) => state.annotationFontSize);
   const project = useAppStore((state) => state.project);
   const screen = useAppStore((state) => state.screen);
   const activeTaskId = useAppStore((state) => state.activeTaskId);
   const setAnnotatorId = useAppStore((state) => state.setAnnotatorId);
+  const setAnnotationFontSize = useAppStore((state) => state.setAnnotationFontSize);
   const setProject = useAppStore((state) => state.setProject);
   const openTask = useAppStore((state) => state.openTask);
   const closeTask = useAppStore((state) => state.closeTask);
@@ -120,6 +122,7 @@ export default function App() {
         <AnnotationWorkspace
           key={activeTask.id}
           task={activeTask}
+          annotationFontSize={annotationFontSize}
           initialTheme={project?.activeTheme}
           initialUnitId={project?.activeUnitId}
           onBack={closeTask}
@@ -131,6 +134,7 @@ export default function App() {
           onVideoPosition={setVideoPosition}
           onThemeChange={setTheme}
           onUnitChange={setActiveUnit}
+          onAnnotationFontSizeChange={setAnnotationFontSize}
         />
       ) : (
         <ProjectDashboard

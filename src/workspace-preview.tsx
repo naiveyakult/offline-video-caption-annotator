@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AnnotationWorkspace } from "./components/AnnotationWorkspace";
 import { parseVideoDocument } from "./domain/annotation";
-import type { AnnotationRecord, DraftRecord, ProjectTask } from "./domain/types";
+import type { AnnotationFontSize, AnnotationRecord, DraftRecord, ProjectTask } from "./domain/types";
 import { captionFixture } from "./test/caption-fixture";
 import "./styles.css";
 
@@ -11,6 +11,7 @@ const source = parseVideoDocument(JSON.stringify(captionFixture));
 export function Preview() {
   const [records, setRecords] = useState<Record<string, AnnotationRecord>>({});
   const [drafts, setDrafts] = useState<Record<string, DraftRecord>>({});
+  const [annotationFontSize, setAnnotationFontSize] = useState<AnnotationFontSize>(14);
   const task: ProjectTask = {
     id: "preview-001",
     jsonPath: "preview-001.json",
@@ -26,6 +27,8 @@ export function Preview() {
   return (
     <AnnotationWorkspace
       task={task}
+      annotationFontSize={annotationFontSize}
+      onAnnotationFontSizeChange={setAnnotationFontSize}
       onBack={() => undefined}
       onVideoPosition={() => undefined}
       onDraft={(unitId, decision, fields) => {

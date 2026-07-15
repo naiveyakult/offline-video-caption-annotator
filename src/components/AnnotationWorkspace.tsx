@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -12,7 +19,13 @@ import {
   X,
 } from "lucide-react";
 import { buildAnnotationUnits, timeToSeconds, validateCorrection } from "../domain/annotation";
-import type { AnnotationUnit, Decision, ProjectTask, Theme } from "../domain/types";
+import type {
+  AnnotationFontSize,
+  AnnotationUnit,
+  Decision,
+  ProjectTask,
+  Theme,
+} from "../domain/types";
 
 const THEME_LABELS: Record<Theme, string> = {
   overview: "Overview",
@@ -40,6 +53,7 @@ function formatVideoTime(seconds: number) {
 
 interface AnnotationWorkspaceProps {
   task: ProjectTask;
+  annotationFontSize: AnnotationFontSize;
   initialTheme?: Theme;
   initialUnitId?: string;
   onBack: () => void;
@@ -55,10 +69,12 @@ interface AnnotationWorkspaceProps {
   onVideoPosition: (position: number) => void;
   onThemeChange?: (theme: Theme) => void;
   onUnitChange?: (unitId: string) => void;
+  onAnnotationFontSizeChange: (value: AnnotationFontSize) => void;
 }
 
 export function AnnotationWorkspace({
   task,
+  annotationFontSize,
   initialTheme = "overview",
   initialUnitId,
   onBack,
@@ -70,6 +86,7 @@ export function AnnotationWorkspace({
   onVideoPosition,
   onThemeChange,
   onUnitChange,
+  onAnnotationFontSizeChange,
 }: AnnotationWorkspaceProps) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [activeUnitId, setActiveUnitId] = useState<string>();
@@ -175,13 +192,48 @@ export function AnnotationWorkspace({
   };
 
   return (
-    <main className="workspace-shell">
+    <main
+      className="workspace-shell"
+      style={{ "--annotation-font-size": `${annotationFontSize}px` } as CSSProperties}
+    >
       <header className="workspace-header">
         <button className="icon-button" onClick={onBack} aria-label="返回任务列表"><ArrowLeft size={19} /></button>
         <div className="workspace-title"><span className="eyebrow">正在标注</span><strong>{task.id}</strong></div>
         <div className="task-navigation" aria-label="任务导航">
           <button className="icon-button" onClick={onPreviousTask} disabled={!onPreviousTask} aria-label="上一任务"><ChevronLeft size={18} /></button>
           <button className="icon-button" onClick={onNextTask} disabled={!onNextTask} aria-label="下一任务"><ChevronRight size={18} /></button>
+        </div>
+        <div className="workspace-toolbar">
+          <section className="header-shortcuts" role="region" aria-label="快捷键说明">
+            <span className="shortcut-heading">快捷键</span>
+            <span className="shortcut-item"><span>True</span><kbd>T</kbd></span>
+            <span className="shortcut-separator" aria-hidden="true">·</span>
+            <span className="shortcut-item"><span>False</span><kbd>F</kbd></span>
+            <span className="shortcut-separator" aria-hidden="true">·</span>
+            <span className="shortcut-item"><span>Other</span><kbd>O</kbd></span>
+            <span className="shortcut-separator" aria-hidden="true">·</span>
+            <span className="shortcut-item"><span>保存 False</span><kbd>⌘↵ / Ctrl+↵</kbd></span>
+            <span className="shortcut-separator" aria-hidden="true">·</span>
+            <span className="shortcut-item"><span>播放</span><kbd>Space</kbd></span>
+          </section>
+          <div className="font-size-control" role="group" aria-label="标注字号">
+            <span>字号</span>
+            {([
+              [12, "A−", "小号 12px"],
+              [14, "A", "标准 14px"],
+              [16, "A+", "大号 16px"],
+            ] as const).map(([value, label, ariaLabel]) => (
+              <button
+                key={value}
+                type="button"
+                aria-label={ariaLabel}
+                aria-pressed={annotationFontSize === value}
+                onClick={() => onAnnotationFontSizeChange(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="header-progress">
           <span>{completed}/{units.length}</span>
@@ -246,16 +298,6 @@ export function AnnotationWorkspace({
               if (unit) playUnit(unit);
             }}><RotateCcw size={16} /> 重播当前片段</button>
           )}
-          <section className="shortcut-guide" role="region" aria-label="快捷键说明">
-            <div className="shortcut-title"><strong>快捷键</strong><span>输入英文时不会触发判定</span></div>
-            <div className="shortcut-grid">
-              <div><kbd>T</kbd><span>True</span></div>
-              <div><kbd>F</kbd><span>False</span></div>
-              <div><kbd>O</kbd><span>Other</span></div>
-              <div className="shortcut-wide"><kbd>Ctrl / Cmd + Enter</kbd><span>保存 False 修订</span></div>
-              <div className="shortcut-wide"><kbd>Space</kbd><span>播放 / 暂停</span></div>
-            </div>
-          </section>
         </aside>
 
         <section className="annotation-pane">
@@ -313,21 +355,21 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
     if (editingFalse) onDraft(unit.id, "false", fields);
   }, [editingFalse, fields]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const handleSave = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && editingFalse && changed) {
-        event.preventDefault();
-        onCommit(unit.id, "false", fields);
-        setEditingFalse(false);
-      }
-    };
-    window.addEventListener("keydown", handleSave);
-    return () => window.removeEventListener("keydown", handleSave);
-  }, [changed, editingFalse, fields, onCommit, unit.id]);
-
   const startFalseEdit = () => {
     setFields(draft?.fields ?? savedCorrection ?? unit.sourceFields);
     setEditingFalse(true);
+  };
+
+  const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const saveShortcut = event.key === "Enter"
+      && (event.metaKey || event.ctrlKey)
+      && !event.altKey;
+    if (!saveShortcut) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!changed) return;
+    onCommit(unit.id, "false", fields);
+    setEditingFalse(false);
   };
 
   return (
@@ -391,7 +433,11 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
       </div>
 
       {editingFalse && (
-        <div className="inline-editor" onClick={(event) => event.stopPropagation()}>
+        <div
+          className="inline-editor"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={handleEditorKeyDown}
+        >
           <div className="editor-title"><strong>修订英文内容</strong><span>至少修改一个英文可编辑字段后保存</span></div>
           {unit.editableKeys.map((key) => (
             <label key={key}>

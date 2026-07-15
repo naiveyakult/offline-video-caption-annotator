@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type {
+  AnnotationFontSize,
   AnnotationRecord,
   Decision,
   DraftRecord,
@@ -10,10 +11,12 @@ import { updateTaskStatus } from "../storage/project-storage";
 
 interface AppState {
   annotatorId: string;
+  annotationFontSize: AnnotationFontSize;
   project?: ProjectSnapshot;
   screen: "dashboard" | "workspace";
   activeTaskId?: string;
   setAnnotatorId: (value: string) => void;
+  setAnnotationFontSize: (value: AnnotationFontSize) => void;
   setProject: (project: ProjectSnapshot) => void;
   openTask: (taskId: string) => void;
   closeTask: () => void;
@@ -33,13 +36,24 @@ interface AppState {
 }
 
 const ANNOTATOR_KEY = "video-annotator:annotator-id";
+const ANNOTATION_FONT_SIZE_KEY = "video-annotator:annotation-font-size";
+
+function readAnnotationFontSize(): AnnotationFontSize {
+  const stored = Number(localStorage.getItem(ANNOTATION_FONT_SIZE_KEY));
+  return stored === 12 || stored === 14 || stored === 16 ? stored : 14;
+}
 
 export const useAppStore = create<AppState>((set) => ({
   annotatorId: localStorage.getItem(ANNOTATOR_KEY) ?? "",
+  annotationFontSize: readAnnotationFontSize(),
   screen: "dashboard",
   setAnnotatorId: (value) => {
     localStorage.setItem(ANNOTATOR_KEY, value.trim());
     set({ annotatorId: value.trim() });
+  },
+  setAnnotationFontSize: (value) => {
+    localStorage.setItem(ANNOTATION_FONT_SIZE_KEY, String(value));
+    set({ annotationFontSize: value });
   },
   setProject: (project) => set({
     project,
