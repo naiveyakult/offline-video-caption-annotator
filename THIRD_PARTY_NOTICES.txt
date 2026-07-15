@@ -1,0 +1,15 @@
+Third-party notices
+===================
+
+This application is built with Tauri, React, Rust and other open-source
+dependencies. Their license metadata is available in package-lock.json and
+src-tauri/Cargo.lock.
+
+The Windows portable archive redistributes Microsoft Edge WebView2 Fixed
+Version Runtime. WebView2 is licensed by Microsoft under the terms presented
+with the official WebView2 download and distribution documentation:
+https://developer.microsoft.com/microsoft-edge/webview2/
+https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution
+
+Microsoft Edge and WebView2 are trademarks of Microsoft Corporation. Microsoft
+does not endorse this application.

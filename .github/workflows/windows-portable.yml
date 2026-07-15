@@ -1,0 +1,112 @@
+name: Windows portable
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      STATIC_VCRUNTIME: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/cache@v4
+        with:
+          path: .cache/webview2
+          key: webview2-x64-150.0.4078.65-ca01385bc232
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.0
+          components: clippy,rustfmt
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Verify public repository contents
+        shell: pwsh
+        run: |
+          $privateFiles = git ls-files | Where-Object { $_ -match '(?i)(\.mp4$|\.jsonl$|\.sqlite(?:-shm|-wal)?$|\.zip$|^dataset/|^exports/|\.annotation-workspace/)' }
+          if ($privateFiles) { throw "Private/generated files are tracked: $($privateFiles -join ', ')" }
+          $privateHistory = git rev-list --objects --all | Where-Object { $_ -match '(?i)(\.mp4$|\.jsonl$|\.sqlite(?:-shm|-wal)?$|\.zip$|(^|/)dataset/|(^|/)exports/|\.annotation-workspace/)' }
+          if ($privateHistory) { throw "Private/generated files exist in Git history: $($privateHistory -join ', ')" }
+          $privateNeedles = @(('/' + 'Users/'), ('yang' + 'ziqing'), ('mt_' + 'movie_2k'))
+          foreach ($needle in $privateNeedles) {
+            $privateText = git grep -n -I -F -- $needle ':!package-lock.json' ':!src-tauri/Cargo.lock'
+            if ($LASTEXITCODE -eq 0) { throw "Private path or dataset identifier found: $privateText" }
+            if ($LASTEXITCODE -ne 1) { throw "git grep failed with exit code $LASTEXITCODE" }
+          }
+
+      - name: Test frontend
+        run: npm run test:run
+
+      - name: Lint and typecheck frontend
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run build
+
+      - name: Prepare pinned WebView2 Fixed Runtime
+        shell: pwsh
+        run: ./scripts/windows/prepare-webview2.ps1
+
+      - name: Test Rust core
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml
+          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Build Windows x64 executable
+        run: npm run tauri -- build --no-bundle
+
+      - name: Assemble portable ZIP
+        shell: pwsh
+        run: ./scripts/windows/package-portable.ps1
+
+      - name: Smoke test portable executable
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "artifacts/视频剧情标注_0.3.0_windows_x64_portable/视频剧情标注.exe"
+          $process = Start-Process -FilePath $exe -WorkingDirectory $exe.DirectoryName -PassThru
+          Start-Sleep -Seconds 10
+          if ($process.HasExited) { throw "Portable executable exited during startup smoke test with code $($process.ExitCode)." }
+          taskkill.exe /PID $process.Id /T /F | Out-Null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 视频剧情标注-0.3.0-windows-x64-portable
+          path: |
+            artifacts/*.zip
+            artifacts/*.sha256
+          retention-days: 7
+          compression-level: 0
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: 视频剧情标注-0.3.0-windows-x64-portable
+          path: release-assets
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" release-assets/* --generate-notes --title "视频剧情标注 ${GITHUB_REF_NAME}"

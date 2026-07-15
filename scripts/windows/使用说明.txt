@@ -1,0 +1,17 @@
+视频剧情标注 0.3.0（Windows x64 便携版）
+
+使用方法
+1. 将 ZIP 完整解压到本机磁盘，例如桌面、文档、C 盘普通目录、D 盘或移动硬盘。
+2. 双击“启动视频剧情标注.cmd”。不要单独双击或移动 EXE。
+3. 启动脚本会为随包 WebView2 运行时配置必要的读取和执行权限，不安装系统组件，也不需要管理员权限。
+
+注意事项
+- 不支持直接在 ZIP 内运行，也不支持 UNC 或网络共享目录。
+- 本版本暂未进行商业代码签名。Windows 首次运行可能显示 SmartScreen；确认文件来自本项目的 GitHub Releases 并核对 SHA-256 后，可选择“更多信息”继续运行。
+- 应用的标注数据库、备份和导出保存在你选择的项目目录中。WebView2 普通运行缓存由 Windows 保存在当前用户的 %LOCALAPPDATA%。
+- Windows N 版本如果无法播放 H.264/AAC 视频，请通过 Windows“可选功能”安装微软 Media Feature Pack。
+- 输入 MP4 和 JSONL 永远不会被应用覆盖。
+
+支持系统
+- Windows 10/11 x64
+- 不支持 Windows 7、32 位 Windows 和 Windows ARM64
