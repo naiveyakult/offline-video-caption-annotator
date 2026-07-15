@@ -226,7 +226,10 @@ export class TauriProjectStorage implements ProjectStorage {
 }
 
 async function sha256(buffer: ArrayBuffer): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", buffer);
+  const source = new Uint8Array(buffer);
+  const bytes = new Uint8Array(source.byteLength);
+  bytes.set(source);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 

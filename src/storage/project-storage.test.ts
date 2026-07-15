@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { captionFixture } from "../test/caption-fixture";
 import { BrowserProjectStorage } from "./project-storage";
 
@@ -13,6 +13,31 @@ function captionRow(videoPath: string, overrides: Record<string, unknown> = {}) 
 }
 
 describe("BrowserProjectStorage JSONL import", () => {
+  it("normalizes file bytes to a typed array before WebCrypto hashing", async () => {
+    const nativeDigest = crypto.subtle.digest.bind(crypto.subtle);
+    const digest = vi.spyOn(crypto.subtle, "digest").mockImplementation(async (algorithm, data) => {
+      expect(ArrayBuffer.isView(data)).toBe(true);
+      return nativeDigest(algorithm, data);
+    });
+    const storage = new BrowserProjectStorage();
+    const files = [
+      projectFile(
+        "scenes_batch_final_caption_zh.jsonl",
+        captionRow("clips/clip.mp4"),
+        "batch/scenes_batch_final_caption_zh.jsonl",
+        "application/x-ndjson",
+      ),
+      projectFile("clip.mp4", "video", "batch/clips/clip.mp4", "video/mp4"),
+    ] as unknown as FileList;
+
+    try {
+      await storage.openFiles(files);
+      expect(digest).toHaveBeenCalled();
+    } finally {
+      digest.mockRestore();
+    }
+  });
+
   it("loads each JSONL row and matches its nested video_path exactly", async () => {
     const storage = new BrowserProjectStorage();
     const row = captionRow("media-batch/video_clips/group-a/clip_01.mp4");
