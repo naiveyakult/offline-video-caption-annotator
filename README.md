@@ -6,7 +6,6 @@
 
 - 左侧播放原视频，支持自由拖动时间轴和重播当前片段。
 - 使用互斥的 `True / False / Other` 判定；False 修订英文，中文仅供对照。
-- 快捷键为 `1 / 2 / 3`，分别对应 True / False / Other；False 修订使用 `Ctrl+S`（Windows）或 `Cmd+S`（macOS）保存。
 - 标注正文和 False 编辑框支持 12px / 14px / 16px 三档字号，并在本机记住选择。
 - Visible Text 不参与标注，导出时保持原样。
 - SQLite 自动保存任务、草稿、当前单元和视频位置，异常退出后可恢复。
