@@ -166,6 +166,8 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .chinese-reference p { color: #536159; }
 .decision-row { display: flex; gap: 7px; padding-top: 13px; border-top: 1px solid #edf0ed; }
 .decision { min-width: 70px; border: 1px solid #dfe4df; background: #fafbfa; color: #68716b; border-radius: 8px; padding: 7px 10px; display: inline-flex; justify-content: center; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; }
+.decision:focus { outline: none; }
+.decision:focus-visible { outline: 2px solid rgba(20,108,79,.38); outline-offset: 2px; }
 .decision.true:hover, .decision.true.selected { color: var(--green); background: var(--green-soft); border-color: #bcd8ca; }
 .decision.false:hover, .decision.false.selected { color: var(--red); background: var(--red-soft); border-color: #e7bdb8; }
 .decision.other:hover, .decision.other.selected { color: var(--amber); background: var(--amber-soft); border-color: #edcda4; }

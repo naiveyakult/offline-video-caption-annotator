@@ -361,6 +361,20 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
   };
 
   const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const shortcut = event.key.toLowerCase();
+    const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
+    if (!changed && !hasModifier && (shortcut === "1" || shortcut === "2" || shortcut === "3")) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (shortcut === "2") return;
+      onCommit(
+        unit.id,
+        shortcut === "1" ? "true" : "other",
+        unit.sourceFields,
+      );
+      setEditingFalse(false);
+      return;
+    }
     const saveShortcut = event.key.toLowerCase() === "s"
       && (event.metaKey || event.ctrlKey)
       && !event.altKey;
@@ -398,11 +412,11 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
       </div>
 
       <div className="decision-row" onClick={(event) => event.stopPropagation()}>
-        <button className={selectedDecision === "true" ? "decision true selected" : "decision true"} onClick={() => {
+        <button aria-pressed={selectedDecision === "true"} className={selectedDecision === "true" ? "decision true selected" : "decision true"} onClick={() => {
           setEditingFalse(false);
           onCommit(unit.id, "true", unit.sourceFields);
         }}><Check size={16} /> True</button>
-        <button id={`${unit.id}-false`} className={selectedDecision === "false" ? "decision false selected" : "decision false"} onClick={startFalseEdit}>
+        <button aria-pressed={selectedDecision === "false"} id={`${unit.id}-false`} className={selectedDecision === "false" ? "decision false selected" : "decision false"} onClick={startFalseEdit}>
           <X size={16} /> False
         </button>
         <span
@@ -414,6 +428,7 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
         >
           <button
             id={`${unit.id}-other`}
+            aria-pressed={selectedDecision === "other"}
             className={selectedDecision === "other" ? "decision other selected" : "decision other"}
             aria-describedby={showOtherHelp ? `${unit.id}-other-tooltip` : undefined}
             onClick={() => {

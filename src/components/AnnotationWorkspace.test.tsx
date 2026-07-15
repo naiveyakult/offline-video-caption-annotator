@@ -25,6 +25,7 @@ function renderWorkspace(
   onDraft = vi.fn(),
   annotationFontSize: 12 | 14 | 16 = 14,
   onAnnotationFontSizeChange = vi.fn(),
+  onUnitChange = vi.fn(),
 ) {
   render(
     <AnnotationWorkspace
@@ -34,10 +35,11 @@ function renderWorkspace(
       onCommit={onCommit}
       onDraft={onDraft}
       onVideoPosition={vi.fn()}
+      onUnitChange={onUnitChange}
       onAnnotationFontSizeChange={onAnnotationFontSizeChange}
     />,
   );
-  return { onCommit, onDraft, onAnnotationFontSizeChange };
+  return { onCommit, onDraft, onAnnotationFontSizeChange, onUnitChange };
 }
 
 describe("AnnotationWorkspace", () => {
@@ -121,6 +123,40 @@ describe("AnnotationWorkspace", () => {
     fireEvent.keyDown(window, { key: "s", ctrlKey: true });
 
     expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["1", "true"],
+    ["3", "other"],
+  ] as const)("switches an unchanged focused False editor with %s", (shortcut, decision) => {
+    const { onCommit, onUnitChange } = renderWorkspace();
+    fireEvent.keyDown(window, { key: "2" });
+    const editor = screen.getByLabelText("修订 overall_visual_style");
+
+    fireEvent.focus(editor);
+    fireEvent.keyDown(editor, { key: shortcut });
+
+    expect(onCommit).toHaveBeenCalledWith(
+      "overview.overall_visual_style",
+      decision,
+      { overall_visual_style: "Cinematic natural light." },
+    );
+    expect(screen.queryByLabelText("修订 overall_visual_style")).not.toBeInTheDocument();
+    expect(onUnitChange).toHaveBeenLastCalledWith("overview.overall_audio_style");
+  });
+
+  it("keeps an unchanged focused False editor selected when 2 is pressed", async () => {
+    const user = userEvent.setup();
+    const { onCommit } = renderWorkspace();
+    fireEvent.keyDown(window, { key: "2" });
+    const editor = screen.getByLabelText("修订 overall_visual_style");
+
+    await user.click(editor);
+    await user.type(editor, "2");
+
+    expect(editor).toHaveValue("Cinematic natural light.");
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("button", { name: "False" })[0]).toHaveAttribute("aria-pressed", "true");
   });
 
   it("keeps plain s and 1/2/3/Space as normal input while an editor is focused", async () => {
@@ -220,7 +256,10 @@ describe("AnnotationWorkspace", () => {
     await user.click(falseButton);
 
     expect(falseButton).toHaveClass("selected");
+    expect(falseButton).toHaveAttribute("aria-pressed", "true");
     expect(screen.getAllByRole("button", { name: "True" })[0]).not.toHaveClass("selected");
+    expect(screen.getAllByRole("button", { name: "True" })[0]).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByRole("button", { name: "Other" })[0]).toHaveAttribute("aria-pressed", "false");
     expect(onDraft).toHaveBeenCalledWith(
       "overview.overall_visual_style",
       "false",
