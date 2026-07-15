@@ -4,7 +4,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
   ArrowLeft,
@@ -126,34 +125,6 @@ export function AnnotationWorkspace({
     }
   };
 
-  useEffect(() => {
-    const handleKeydown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const editing = target?.tagName === "TEXTAREA" || target?.tagName === "INPUT";
-      if (editing) return;
-      const activeUnit = units.find((unit) => unit.id === activeUnitId);
-      if (!activeUnit) return;
-      const shortcut = event.key.toLowerCase();
-      const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
-      if (!hasModifier && shortcut === "1") {
-        event.preventDefault();
-        onCommit(activeUnit.id, "true", activeUnit.sourceFields);
-        advanceFrom(activeUnit.id);
-      }
-      if (!hasModifier && (shortcut === "2" || shortcut === "3")) {
-        event.preventDefault();
-        document.getElementById(`${activeUnit.id}-${shortcut === "2" ? "false" : "other"}`)?.click();
-      }
-      if (event.code === "Space") {
-        event.preventDefault();
-        const video = videoRef.current;
-        if (video) void (video.paused ? video.play() : video.pause());
-      }
-    };
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
-  }, [activeUnitId, onCommit, onUnitChange, task.records, units, visibleUnits]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const selectTheme = (nextTheme: Theme) => {
     setTheme(nextTheme);
     onThemeChange?.(nextTheme);
@@ -204,18 +175,6 @@ export function AnnotationWorkspace({
           <button className="icon-button" onClick={onNextTask} disabled={!onNextTask} aria-label="下一任务"><ChevronRight size={18} /></button>
         </div>
         <div className="workspace-toolbar">
-          <section className="header-shortcuts" role="region" aria-label="快捷键说明">
-            <span className="shortcut-heading">快捷键</span>
-            <span className="shortcut-item"><span>True</span><kbd>1</kbd></span>
-            <span className="shortcut-separator" aria-hidden="true">·</span>
-            <span className="shortcut-item"><span>False</span><kbd>2</kbd></span>
-            <span className="shortcut-separator" aria-hidden="true">·</span>
-            <span className="shortcut-item"><span>Other</span><kbd>3</kbd></span>
-            <span className="shortcut-separator" aria-hidden="true">·</span>
-            <span className="shortcut-item"><span>保存 False</span><kbd>⌘S / Ctrl+S</kbd></span>
-            <span className="shortcut-separator" aria-hidden="true">·</span>
-            <span className="shortcut-item"><span>播放</span><kbd>Space</kbd></span>
-          </section>
           <div className="font-size-control" role="group" aria-label="标注字号">
             <span>字号</span>
             {([
@@ -360,32 +319,6 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
     setEditingFalse(true);
   };
 
-  const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const shortcut = event.key.toLowerCase();
-    const hasModifier = event.metaKey || event.ctrlKey || event.altKey;
-    if (!changed && !hasModifier && (shortcut === "1" || shortcut === "2" || shortcut === "3")) {
-      event.preventDefault();
-      event.stopPropagation();
-      if (shortcut === "2") return;
-      onCommit(
-        unit.id,
-        shortcut === "1" ? "true" : "other",
-        unit.sourceFields,
-      );
-      setEditingFalse(false);
-      return;
-    }
-    const saveShortcut = event.key.toLowerCase() === "s"
-      && (event.metaKey || event.ctrlKey)
-      && !event.altKey;
-    if (!saveShortcut) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (!changed) return;
-    onCommit(unit.id, "false", fields);
-    setEditingFalse(false);
-  };
-
   return (
     <article id={`unit-card-${unit.id}`} className={`unit-card ${active ? "active" : ""}`} onClick={onSelect}>
       <div className="unit-heading">
@@ -451,7 +384,6 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
         <div
           className="inline-editor"
           onClick={(event) => event.stopPropagation()}
-          onKeyDown={handleEditorKeyDown}
         >
           <div className="editor-title"><strong>修订英文内容</strong><span>至少修改一个英文可编辑字段后保存</span></div>
           {unit.editableKeys.map((key) => (

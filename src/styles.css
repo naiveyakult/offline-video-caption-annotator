@@ -107,11 +107,6 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .workspace-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 0 1 270px; }
 .workspace-title strong { max-width: clamp(150px, 18vw, 320px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
 .workspace-toolbar { min-width: 0; flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 12px; }
-.header-shortcuts { min-width: 0; display: flex; align-items: center; justify-content: center; gap: 5px; color: #68716b; font-size: 9px; white-space: nowrap; }
-.shortcut-heading { color: #8b938e; font-weight: 700; letter-spacing: .04em; }
-.shortcut-item { display: inline-flex; align-items: center; gap: 4px; }
-.shortcut-separator { color: #c1c8c3; }
-.header-shortcuts kbd { padding: 3px 5px; border: 1px solid #d9dfda; border-bottom-width: 2px; border-radius: 5px; background: #f7f9f7; color: #3f4b44; font: 600 9px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .font-size-control { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 3px; color: #78817b; font-size: 9px; white-space: nowrap; }
 .font-size-control > span { margin-right: 2px; font-weight: 700; }
 .font-size-control button { min-width: 27px; height: 25px; padding: 0 6px; border: 1px solid #dce2dd; background: white; color: #657068; font-size: 10px; font-weight: 700; }
@@ -202,10 +197,6 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .workspace-title { flex-basis: 165px; }
   .workspace-title strong { max-width: 165px; }
   .workspace-toolbar { gap: 7px; }
-  .shortcut-heading { display: none; }
-  .header-shortcuts { gap: 3px; }
-  .shortcut-item { gap: 2px; }
-  .header-shortcuts kbd { padding-inline: 3px; }
   .font-size-control { gap: 2px; }
   .font-size-control button { min-width: 24px; padding-inline: 4px; }
   .progress-track { width: 90px; }

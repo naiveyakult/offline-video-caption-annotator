@@ -56,16 +56,12 @@ describe("AnnotationWorkspace", () => {
     expect(screen.queryByText("Other：人物或事件本身存在严重错误，无需修改文本。")).not.toBeInTheDocument();
   });
 
-  it("shows the fixed shortcuts and font controls in the workspace header", () => {
+  it("removes shortcut hints while keeping font controls in the workspace header", () => {
     renderWorkspace();
 
-    const guide = screen.getByRole("region", { name: "快捷键说明" });
-    expect(guide.closest("header")).toBeInTheDocument();
-    expect(guide).toHaveTextContent("True1");
-    expect(guide).toHaveTextContent("False2");
-    expect(guide).toHaveTextContent("Other3");
-    expect(guide).toHaveTextContent("保存 False⌘S / Ctrl+S");
-    expect(guide).toHaveTextContent("播放Space");
+    expect(screen.queryByRole("region", { name: "快捷键说明" })).not.toBeInTheDocument();
+    expect(screen.queryByText("⌘S / Ctrl+S")).not.toBeInTheDocument();
+    expect(screen.queryByText("Space")).not.toBeInTheDocument();
 
     const fontGroup = screen.getByRole("group", { name: "标注字号" });
     expect(within(fontGroup).getByRole("button", { name: "小号 12px" })).toHaveAttribute("aria-pressed", "false");
@@ -73,97 +69,41 @@ describe("AnnotationWorkspace", () => {
     expect(within(fontGroup).getByRole("button", { name: "大号 16px" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("uses 1, 2 and 3 for True, False and Other", () => {
+  it("does not trigger decisions or video playback from keyboard shortcuts", () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     const { onCommit } = renderWorkspace();
 
     fireEvent.keyDown(window, { key: "1" });
-    expect(onCommit).toHaveBeenCalledWith(
-      "overview.overall_visual_style",
-      "true",
-      { overall_visual_style: "Cinematic natural light." },
-    );
-
     fireEvent.keyDown(window, { key: "2" });
-    const editor = screen.getByLabelText("修订 overall_audio_style");
-    expect(editor).toBeInTheDocument();
-
     fireEvent.keyDown(window, { key: "3" });
-    expect(onCommit).toHaveBeenCalledWith(
-      "overview.overall_audio_style",
-      "other",
-      { overall_audio_style: "Quiet forest ambience." },
-    );
+    fireEvent.keyDown(window, { key: " ", code: "Space" });
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "保存修订" })).not.toBeInTheDocument();
+    expect(play).not.toHaveBeenCalled();
   });
 
   it.each([
     ["Ctrl+S", { ctrlKey: true }],
     ["Command+S", { metaKey: true }],
-  ])("saves the focused changed False editor with %s", (_label, modifier) => {
+  ])("does not save a changed False editor with %s", async (_label, modifier) => {
+    const user = userEvent.setup();
     const { onCommit } = renderWorkspace();
-    fireEvent.keyDown(window, { key: "2" });
+    await user.click(screen.getAllByRole("button", { name: "False" })[0]!);
     const editor = screen.getByLabelText("修订 overall_visual_style");
     fireEvent.change(editor, { target: { value: "Corrected style." } });
 
     fireEvent.keyDown(editor, { key: "s", ...modifier });
 
-    expect(onCommit).toHaveBeenCalledWith(
-      "overview.overall_visual_style",
-      "false",
-      { overall_visual_style: "Corrected style." },
-    );
-  });
-
-  it("does not save an unchanged or unfocused False editor", () => {
-    const { onCommit } = renderWorkspace();
-    fireEvent.keyDown(window, { key: "2" });
-    const editor = screen.getByLabelText("修订 overall_visual_style");
-
-    fireEvent.keyDown(editor, { key: "s", ctrlKey: true });
-    fireEvent.change(editor, { target: { value: "Corrected style." } });
-    fireEvent.keyDown(window, { key: "s", ctrlKey: true });
-
     expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("修订 overall_visual_style")).toBeInTheDocument();
   });
 
-  it.each([
-    ["1", "true"],
-    ["3", "other"],
-  ] as const)("switches an unchanged focused False editor with %s", (shortcut, decision) => {
-    const { onCommit, onUnitChange } = renderWorkspace();
-    fireEvent.keyDown(window, { key: "2" });
-    const editor = screen.getByLabelText("修订 overall_visual_style");
-
-    fireEvent.focus(editor);
-    fireEvent.keyDown(editor, { key: shortcut });
-
-    expect(onCommit).toHaveBeenCalledWith(
-      "overview.overall_visual_style",
-      decision,
-      { overall_visual_style: "Cinematic natural light." },
-    );
-    expect(screen.queryByLabelText("修订 overall_visual_style")).not.toBeInTheDocument();
-    expect(onUnitChange).toHaveBeenLastCalledWith("overview.overall_audio_style");
-  });
-
-  it("keeps an unchanged focused False editor selected when 2 is pressed", async () => {
-    const user = userEvent.setup();
-    const { onCommit } = renderWorkspace();
-    fireEvent.keyDown(window, { key: "2" });
-    const editor = screen.getByLabelText("修订 overall_visual_style");
-
-    await user.click(editor);
-    await user.type(editor, "2");
-
-    expect(editor).toHaveValue("Cinematic natural light.");
-    expect(onCommit).not.toHaveBeenCalled();
-    expect(screen.getAllByRole("button", { name: "False" })[0]).toHaveAttribute("aria-pressed", "true");
-  });
-
-  it("keeps plain s and 1/2/3/Space as normal input while an editor is focused", async () => {
+  it("keeps former shortcut keys as normal input while an editor is focused", async () => {
     const user = userEvent.setup();
     const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     const { onCommit } = renderWorkspace();
-    fireEvent.keyDown(window, { key: "2" });
+    await user.click(screen.getAllByRole("button", { name: "False" })[0]!);
     const editor = screen.getByLabelText("修订 overall_visual_style");
     await user.click(editor);
     await user.type(editor, "s123 ");
