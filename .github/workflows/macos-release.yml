@@ -1,0 +1,108 @@
+name: macOS release
+
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/macos-release.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: v0.3.0
+  DMG_NAME: 视频剧情标注_0.3.0_aarch64.dmg
+  SHA_NAME: 视频剧情标注_0.3.0_aarch64.dmg.sha256
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.3.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install isolated Rust toolchain
+        run: npm run rust:setup
+
+      - name: Test frontend
+        run: npm run test:run
+
+      - name: Lint and typecheck frontend
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run build
+
+      - name: Test Rust core
+        run: |
+          ./scripts/with-rust.sh cargo test --manifest-path src-tauri/Cargo.toml
+          ./scripts/with-rust.sh cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          ./scripts/with-rust.sh cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Build macOS Apple Silicon bundles
+        run: npm run tauri:build -- --config src-tauri/tauri.macos.conf.json
+
+      - name: Verify and stage macOS assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app_path="src-tauri/target/release/bundle/macos/视频剧情标注.app"
+          dmg_path="src-tauri/target/release/bundle/dmg/${DMG_NAME}"
+          binary_path="${app_path}/Contents/MacOS/offline-video-annotator"
+
+          test -d "${app_path}"
+          test -f "${dmg_path}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")" = "0.3.0"
+          test "$(lipo -archs "${binary_path}")" = "arm64"
+          codesign --verify --deep --strict --verbose=2 "${app_path}"
+          codesign -dv --verbose=4 "${app_path}" 2>&1 | grep -q "Signature=adhoc"
+          hdiutil verify "${dmg_path}"
+
+          mkdir -p release-assets
+          cp "${dmg_path}" "release-assets/${DMG_NAME}"
+          (
+            cd release-assets
+            shasum -a 256 "${DMG_NAME}" > "${SHA_NAME}"
+          )
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 视频剧情标注-0.3.0-macos-aarch64
+          path: release-assets/*
+          retention-days: 7
+          compression-level: 0
+
+  publish-macos:
+    needs: build-macos
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: 视频剧情标注-0.3.0-macos-aarch64
+          path: release-assets
+
+      - name: Add macOS assets to the existing v0.3.0 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -f "release-assets/${DMG_NAME}"
+          test -f "release-assets/${SHA_NAME}"
+          gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}"
+          gh release upload "${RELEASE_TAG}" \
+            "release-assets/${DMG_NAME}" \
+            "release-assets/${SHA_NAME}" \
+            --clobber \
+            --repo "${GITHUB_REPOSITORY}"
