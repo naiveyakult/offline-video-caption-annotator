@@ -69,6 +69,8 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("$global:LASTEXITCODE = 0");
     expect(workflow).toContain("Split-Path -Parent $exePath");
     expect(workflow).toContain("release:");
+    expect(workflow).toContain('--repo "${GITHUB_REPOSITORY}"');
+    expect(workflow).toContain("gh release upload");
     expect(runtime.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     expect(runtime.architecture).toBe("x64");
     expect(runtime.url).toMatch(/^https:\/\/.*microsoft\.com\//);
