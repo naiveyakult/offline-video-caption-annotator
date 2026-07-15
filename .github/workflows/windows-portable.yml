@@ -81,8 +81,9 @@ jobs:
       - name: Smoke test portable executable
         shell: pwsh
         run: |
-          $exe = Resolve-Path "artifacts/视频剧情标注_0.3.0_windows_x64_portable/视频剧情标注.exe"
-          $process = Start-Process -FilePath $exe -WorkingDirectory $exe.DirectoryName -PassThru
+          $exePath = (Resolve-Path "artifacts/视频剧情标注_0.3.0_windows_x64_portable/视频剧情标注.exe").Path
+          $workingDirectory = Split-Path -Parent $exePath
+          $process = Start-Process -FilePath $exePath -WorkingDirectory $workingDirectory -PassThru
           Start-Sleep -Seconds 10
           if ($process.HasExited) { throw "Portable executable exited during startup smoke test with code $($process.ExitCode)." }
           taskkill.exe /PID $process.Id /T /F | Out-Null
