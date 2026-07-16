@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Check,
   CircleAlert,
+  CircleHelp,
   Download,
   Play,
   RotateCcw,
@@ -305,6 +306,7 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
   const savedCorrection = record?.decision === "false" ? record.correctedFields : undefined;
   const initialFields = draft?.fields ?? savedCorrection ?? unit.sourceFields;
   const [editingFalse, setEditingFalse] = useState(Boolean(draft));
+  const [showQuestionHelp, setShowQuestionHelp] = useState(false);
   const [showOtherHelp, setShowOtherHelp] = useState(false);
   const [fields, setFields] = useState<Record<string, string>>(initialFields);
   const changed = editingFalse ? validateCorrection("false", unit.sourceFields, fields) : false;
@@ -353,7 +355,32 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
           <X size={16} /> False
         </button>
         <span
-          className="other-control"
+          className="decision-help-control"
+          onMouseEnter={() => setShowQuestionHelp(true)}
+          onMouseLeave={() => setShowQuestionHelp(false)}
+          onFocus={() => setShowQuestionHelp(true)}
+          onBlur={() => setShowQuestionHelp(false)}
+        >
+          <button
+            id={`${unit.id}-question`}
+            aria-pressed={selectedDecision === "question"}
+            className={selectedDecision === "question" ? "decision question selected" : "decision question"}
+            aria-describedby={showQuestionHelp ? `${unit.id}-question-tooltip` : undefined}
+            onClick={() => {
+              setEditingFalse(false);
+              onCommit(unit.id, "question", unit.sourceFields);
+            }}
+          >
+            <CircleHelp size={16} /> Question
+          </button>
+          {showQuestionHelp && (
+            <span id={`${unit.id}-question-tooltip`} className="decision-tooltip" role="tooltip">
+              Question：事件匹配不准确，但受当前分段、说话人或时间范围限制，无法合理修订；问题不属于严重错误。
+            </span>
+          )}
+        </span>
+        <span
+          className="decision-help-control"
           onMouseEnter={() => setShowOtherHelp(true)}
           onMouseLeave={() => setShowOtherHelp(false)}
           onFocus={() => setShowOtherHelp(true)}
@@ -372,7 +399,7 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
             <CircleAlert size={16} /> Other
           </button>
           {showOtherHelp && (
-            <span id={`${unit.id}-other-tooltip`} className="other-tooltip" role="tooltip">
+            <span id={`${unit.id}-other-tooltip`} className="decision-tooltip" role="tooltip">
               Other：人物或事件本身存在严重错误，无需修改文本。
             </span>
           )}
@@ -412,6 +439,6 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
 
 function DecisionBadge({ decision, hasDraft }: { decision: Decision; hasDraft: boolean }) {
   if (hasDraft && decision === "pending") return <span className="status-badge draft">False 草稿</span>;
-  const labels: Record<Decision, string> = { pending: "待标注", true: "True", false: "False", other: "Other" };
+  const labels: Record<Decision, string> = { pending: "待标注", true: "True", false: "False", question: "Question", other: "Other" };
   return <span className={`status-badge ${decision}`}>{labels[decision]}</span>;
 }

@@ -50,6 +50,7 @@ describe("AnnotationWorkspace", () => {
     expect(screen.getByRole("tab", { name: /Storyline/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Speech Transcript/ })).toBeInTheDocument();
     expect(screen.queryByText(/Visible Text/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Question" })).toHaveLength(5);
     const english = screen.getByText("Cinematic natural light.");
     const chinese = screen.getByText("电影化的自然光。");
     expect(english.compareDocumentPosition(chinese) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -160,6 +161,118 @@ describe("AnnotationWorkspace", () => {
     expect(screen.queryByRole("button", { name: "保存修订" })).not.toBeInTheDocument();
   });
 
+  it("commits Question immediately with source text and advances without opening an editor", async () => {
+    const user = userEvent.setup();
+    const { onCommit, onUnitChange } = renderWorkspace();
+
+    await user.click(screen.getAllByRole("button", { name: "Question" })[0]!);
+
+    expect(onCommit).toHaveBeenCalledWith(
+      "overview.overall_visual_style",
+      "question",
+      { overall_visual_style: "Cinematic natural light." },
+    );
+    expect(screen.queryByRole("button", { name: "保存修订" })).not.toBeInTheDocument();
+    expect(onUnitChange).toHaveBeenLastCalledWith("overview.overall_audio_style");
+  });
+
+  it("offers Question in Overview, Storyline and Speech Transcript", async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    expect(screen.getAllByRole("button", { name: "Question" })).toHaveLength(5);
+    await user.click(screen.getByRole("tab", { name: /Storyline/ }));
+    expect(screen.getAllByRole("button", { name: "Question" })).toHaveLength(2);
+    await user.click(screen.getByRole("tab", { name: /Speech Transcript/ }));
+    expect(screen.getAllByRole("button", { name: "Question" })).toHaveLength(2);
+  });
+
+  it("shows the Question explanation only while its control is hovered or focused", async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+    const question = screen.getAllByRole("button", { name: "Question" })[0]!;
+    const explanation = "Question：事件匹配不准确，但受当前分段、说话人或时间范围限制，无法合理修订；问题不属于严重错误。";
+
+    expect(screen.queryByText(explanation)).not.toBeInTheDocument();
+    await user.hover(question);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(explanation);
+    expect(question).toHaveAttribute("aria-describedby", screen.getByRole("tooltip").id);
+    await user.unhover(question);
+    expect(screen.queryByText(explanation)).not.toBeInTheDocument();
+
+    fireEvent.focus(question);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(explanation);
+    fireEvent.blur(question);
+    expect(screen.queryByText(explanation)).not.toBeInTheDocument();
+    expect(question).not.toHaveAttribute("title");
+  });
+
+  it("replaces a False draft with Question and restores the source text", async () => {
+    const user = userEvent.setup();
+    const { onCommit, onUnitChange } = renderWorkspace({
+      drafts: {
+        "overview.overall_visual_style": {
+          unitId: "overview.overall_visual_style",
+          decision: "false",
+          fields: { overall_visual_style: "Unfinished correction." },
+          updatedAt: "2026-07-14T00:00:00.000Z",
+        },
+      },
+    });
+
+    expect(screen.getByLabelText("修订 overall_visual_style")).toHaveValue("Unfinished correction.");
+    await user.click(screen.getAllByRole("button", { name: "Question" })[0]!);
+
+    expect(onCommit).toHaveBeenCalledWith(
+      "overview.overall_visual_style",
+      "question",
+      { overall_visual_style: "Cinematic natural light." },
+    );
+    expect(screen.queryByLabelText("修订 overall_visual_style")).not.toBeInTheDocument();
+    expect(onUnitChange).toHaveBeenLastCalledWith("overview.overall_audio_style");
+  });
+
+  it("replaces a saved False correction with Question and restores the source text", async () => {
+    const user = userEvent.setup();
+    const { onCommit } = renderWorkspace({
+      records: {
+        "overview.overall_visual_style": {
+          unitId: "overview.overall_visual_style",
+          decision: "false",
+          correctedFields: { overall_visual_style: "Saved correction." },
+          updatedAt: "2026-07-14T00:00:00.000Z",
+        },
+      },
+    });
+
+    await user.click(screen.getAllByRole("button", { name: "Question" })[0]!);
+    expect(onCommit).toHaveBeenCalledWith(
+      "overview.overall_visual_style",
+      "question",
+      { overall_visual_style: "Cinematic natural light." },
+    );
+    expect(screen.queryByLabelText("修订 overall_visual_style")).not.toBeInTheDocument();
+  });
+
+  it("shows exactly one selected decision when Question is saved", () => {
+    renderWorkspace({
+      records: {
+        "overview.overall_visual_style": {
+          unitId: "overview.overall_visual_style",
+          decision: "question",
+          correctedFields: {},
+          updatedAt: "2026-07-14T00:00:00.000Z",
+        },
+      },
+    });
+
+    const buttons = ["True", "False", "Question", "Other"].map(
+      (name) => screen.getAllByRole("button", { name })[0]!,
+    );
+    expect(buttons.map((button) => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true", "false"]);
+    expect(screen.getByText("Question", { selector: ".status-badge" })).toBeInTheDocument();
+  });
+
   it("shows the Other explanation only while its control is hovered or focused", async () => {
     const user = userEvent.setup();
     renderWorkspace();
@@ -199,6 +312,7 @@ describe("AnnotationWorkspace", () => {
     expect(falseButton).toHaveAttribute("aria-pressed", "true");
     expect(screen.getAllByRole("button", { name: "True" })[0]).not.toHaveClass("selected");
     expect(screen.getAllByRole("button", { name: "True" })[0]).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getAllByRole("button", { name: "Question" })[0]).toHaveAttribute("aria-pressed", "false");
     expect(screen.getAllByRole("button", { name: "Other" })[0]).toHaveAttribute("aria-pressed", "false");
     expect(onDraft).toHaveBeenCalledWith(
       "overview.overall_visual_style",

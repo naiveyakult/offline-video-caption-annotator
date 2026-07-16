@@ -2,17 +2,16 @@ name: macOS release
 
 on:
   push:
-    branches: [main]
-    paths: [".github/workflows/macos-release.yml"]
+    tags: ["v0.4.0"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  RELEASE_TAG: v0.3.0
-  DMG_NAME: 视频剧情标注_0.3.0_aarch64.dmg
-  SHA_NAME: 视频剧情标注_0.3.0_aarch64.dmg.sha256
+  RELEASE_TAG: v0.4.0
+  DMG_NAME: 视频剧情标注_0.4.0_aarch64.dmg
+  SHA_NAME: 视频剧情标注_0.4.0_aarch64.dmg.sha256
 
 jobs:
   build-macos:
@@ -21,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: v0.3.0
+          ref: v0.4.0
 
       - uses: actions/setup-node@v4
         with:
@@ -63,7 +62,7 @@ jobs:
 
           test -d "${app_path}"
           test -f "${dmg_path}"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")" = "0.3.0"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")" = "0.4.0"
           test "$(lipo -archs "${binary_path}")" = "arm64"
           codesign --verify --deep --strict --verbose=2 "${app_path}"
           codesign -dv --verbose=4 "${app_path}" 2>&1 | grep -q "Signature=adhoc"
@@ -78,7 +77,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: 视频剧情标注-0.3.0-macos-aarch64
+          name: 视频剧情标注-0.4.0-macos-aarch64
           path: release-assets/*
           retention-days: 7
           compression-level: 0
@@ -91,16 +90,18 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: 视频剧情标注-0.3.0-macos-aarch64
+          name: 视频剧情标注-0.4.0-macos-aarch64
           path: release-assets
 
-      - name: Add macOS assets to the existing v0.3.0 release
+      - name: Publish macOS v0.4.0 assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           test -f "release-assets/${DMG_NAME}"
           test -f "release-assets/${SHA_NAME}"
-          gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}"
+          if ! gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${RELEASE_TAG}" --generate-notes --title "视频剧情标注 ${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" || true
+          fi
           gh release upload "${RELEASE_TAG}" \
             "release-assets/${DMG_NAME}" \
             "release-assets/${SHA_NAME}" \

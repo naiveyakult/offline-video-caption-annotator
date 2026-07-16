@@ -1,5 +1,5 @@
 export type Theme = "overview" | "storyline" | "speech_transcript";
-export type Decision = "pending" | "true" | "false" | "other";
+export type Decision = "pending" | "true" | "false" | "question" | "other";
 export type AnnotationFontSize = 12 | 14 | 16;
 
 export interface VideoDocument {
@@ -44,7 +44,7 @@ export interface AnnotationMetaUnit {
 }
 
 export interface AnnotationMeta {
-  schema_version: "2.0";
+  schema_version: "2.1";
   task_id: string;
   annotator_id: string;
   source_sha256: string;
@@ -55,6 +55,7 @@ export interface AnnotationMeta {
     pending: number;
     true: number;
     false: number;
+    question: number;
     other: number;
   };
   units: AnnotationMetaUnit[];

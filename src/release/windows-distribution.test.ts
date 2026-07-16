@@ -14,6 +14,7 @@ function readJson(relativePath: string): Record<string, unknown> {
 
 describe("Windows portable distribution contract", () => {
   it("keeps shared, macOS, and Windows Tauri settings separated", () => {
+    const packageJson = readJson("package.json") as { version: string };
     const shared = readJson("src-tauri/tauri.conf.json") as {
       version: string;
       app: { security: { assetProtocol: { scope: string[] } } };
@@ -30,7 +31,10 @@ describe("Windows portable distribution contract", () => {
       };
     };
 
-    expect(shared.version).toBe("0.3.0");
+    expect(packageJson.version).toBe("0.4.0");
+    expect(shared.version).toBe(packageJson.version);
+    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.4.0"');
+    expect(read("scripts/windows/使用说明.txt")).toContain("0.4.0");
     expect(shared.app.security.assetProtocol.scope).toEqual([]);
     expect(mac.bundle.targets).toEqual(["dmg", "app"]);
     expect(mac.bundle.macOS.minimumSystemVersion).toBe("13.0");
@@ -71,6 +75,10 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("release:");
     expect(workflow).toContain('--repo "${GITHUB_REPOSITORY}"');
     expect(workflow).toContain("gh release upload");
+    expect(workflow).toContain("gh release create");
+    expect(workflow).toContain("|| true");
+    expect(workflow).toContain("视频剧情标注-0.4.0-windows-x64-portable");
+    expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.4.0_windows_x64_portable");
     expect(runtime.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     expect(runtime.architecture).toBe("x64");
     expect(runtime.url).toMatch(/^https:\/\/.*microsoft\.com\//);
@@ -85,6 +93,8 @@ describe("Windows portable distribution contract", () => {
     expect(ignore).toContain("*.jsonl");
     expect(ignore).toContain("movie.zip");
     expect(ignore).toContain("WebView2FixedRuntime/");
+    expect(ignore).toContain(".codex-artifacts/");
+    expect(ignore).toContain("outputs/");
     expect(readme).toContain("scenes_batch_final_caption_zh.jsonl");
     expect(readme).toContain("media-batch/");
   });

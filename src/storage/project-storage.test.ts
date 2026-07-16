@@ -12,6 +12,15 @@ function captionRow(videoPath: string, overrides: Record<string, unknown> = {}) 
   return JSON.stringify({ ...captionFixture, video_path: videoPath, ...overrides });
 }
 
+function readBlob(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
+}
+
 describe("BrowserProjectStorage JSONL import", () => {
   it("normalizes file bytes to a typed array before WebCrypto hashing", async () => {
     const nativeDigest = crypto.subtle.digest.bind(crypto.subtle);
@@ -189,5 +198,103 @@ describe("BrowserProjectStorage JSONL import", () => {
 
     const restored = await storage.openFiles(files);
     expect(restored.tasks[0]!.records).toEqual({});
+  });
+
+  it("restores existing v0.3 decisions together with the new Question decision", async () => {
+    const storage = new BrowserProjectStorage();
+    const files = [
+      projectFile(
+        "scenes_compat_final_caption_zh.jsonl",
+        captionRow("clips/1.mp4"),
+        "compat-batch/scenes_compat_final_caption_zh.jsonl",
+        "application/x-ndjson",
+      ),
+      projectFile("1.mp4", "video", "compat-batch/clips/1.mp4", "video/mp4"),
+    ] as unknown as FileList;
+    const first = await storage.openFiles(files);
+    first.tasks[0]!.records = {
+      "overview.overall_visual_style": {
+        unitId: "overview.overall_visual_style",
+        decision: "true",
+        correctedFields: {},
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+      "overview.overall_audio_style": {
+        unitId: "overview.overall_audio_style",
+        decision: "false",
+        correctedFields: { overall_audio_style: "Corrected audio." },
+        updatedAt: "2026-07-14T00:00:01.000Z",
+      },
+      "overview.character_profiles.0": {
+        unitId: "overview.character_profiles.0",
+        decision: "other",
+        correctedFields: {},
+        updatedAt: "2026-07-14T00:00:02.000Z",
+      },
+      "overview.narrative_theme": {
+        unitId: "overview.narrative_theme",
+        decision: "question",
+        correctedFields: {},
+        updatedAt: "2026-07-14T00:00:03.000Z",
+      },
+    };
+    await storage.saveProject(first);
+
+    const restored = await storage.openFiles(files);
+    expect(Object.values(restored.tasks[0]!.records).map((record) => record.decision)).toEqual([
+      "true",
+      "false",
+      "other",
+      "question",
+    ]);
+  });
+
+  it("includes Question in the schema 2.1 batch manifest counts", async () => {
+    const storage = new BrowserProjectStorage();
+    const files = [
+      projectFile(
+        "scenes_export_final_caption_zh.jsonl",
+        captionRow("clips/1.mp4"),
+        "export-batch/scenes_export_final_caption_zh.jsonl",
+        "application/x-ndjson",
+      ),
+      projectFile("1.mp4", "video", "export-batch/clips/1.mp4", "video/mp4"),
+    ] as unknown as FileList;
+    const project = await storage.openFiles(files);
+    project.tasks[0]!.records = {
+      "overview.overall_visual_style": {
+        unitId: "overview.overall_visual_style",
+        decision: "question",
+        correctedFields: {},
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    };
+    const blobs: Blob[] = [];
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      if (!(blob instanceof Blob)) throw new Error("导出内容必须使用 Blob");
+      blobs.push(blob);
+      return `blob:export-${blobs.length}`;
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    try {
+      await storage.exportProject(project, "A023");
+      const manifest = JSON.parse(await readBlob(blobs.at(-1)!)) as {
+        schema_version: string;
+        annotation_counts: Record<string, number>;
+      };
+      expect(manifest.schema_version).toBe("2.1");
+      expect(manifest.annotation_counts).toEqual({
+        total: 9,
+        pending: 8,
+        true: 0,
+        false: 0,
+        question: 1,
+        other: 0,
+      });
+    } finally {
+      createObjectUrl.mockRestore();
+      click.mockRestore();
+    }
   });
 });

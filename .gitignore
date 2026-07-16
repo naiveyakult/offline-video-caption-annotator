@@ -2,8 +2,10 @@
 node_modules/
 .tools/
 .cache/
+.codex-artifacts/
 artifacts/
 dist/
+outputs/
 src-tauri/target/
 src-tauri/gen/
 .annotation-workspace/

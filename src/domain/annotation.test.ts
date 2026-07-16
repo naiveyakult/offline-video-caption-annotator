@@ -67,6 +67,7 @@ describe("bilingual caption annotation domain", () => {
     expect(validateCorrection("false", { description: "event" }, { description: "event" })).toBe(false);
     expect(validateCorrection("false", { description: "event" }, { description: "fixed" })).toBe(true);
     expect(validateCorrection("true", { description: "event" }, { description: "event" })).toBe(true);
+    expect(validateCorrection("question", { description: "event" }, { description: "event" })).toBe(true);
     expect(validateCorrection("other", { description: "event" }, { description: "event" })).toBe(true);
   });
 
@@ -85,6 +86,12 @@ describe("bilingual caption annotation domain", () => {
         correctedFields: {},
         updatedAt: "2026-07-14T00:00:01.000Z",
       },
+      "speech_transcript.1": {
+        unitId: "speech_transcript.1",
+        decision: "question",
+        correctedFields: {},
+        updatedAt: "2026-07-14T00:00:02.000Z",
+      },
     };
     const output = applyAnnotations(document, records);
 
@@ -96,7 +103,7 @@ describe("bilingual caption annotation domain", () => {
     expect(output.usage).toEqual(captionFixture.usage);
   });
 
-  it("exports schema 2.0 decisions and excludes Chinese and Visible Text units", () => {
+  it("exports schema 2.1 Question decisions and excludes Chinese and Visible Text units", () => {
     const document = parseVideoDocument(JSON.stringify(noSpeechFixture));
     const meta = createAnnotationMeta("task-1", "A023", "hash", document, {
       "overview.overall_visual_style": {
@@ -111,11 +118,38 @@ describe("bilingual caption annotation domain", () => {
         correctedFields: {},
         updatedAt: "2026-07-14T00:00:01.000Z",
       },
+      "overview.narrative_theme": {
+        unitId: "overview.narrative_theme",
+        decision: "question",
+        correctedFields: {},
+        updatedAt: "2026-07-14T00:00:02.000Z",
+      },
     });
 
-    expect(meta.schema_version).toBe("2.0");
-    expect(meta.counts).toEqual({ total: 8, pending: 6, true: 1, false: 0, other: 1 });
+    expect(meta.schema_version).toBe("2.1");
+    expect(meta.counts).toEqual({ total: 8, pending: 5, true: 1, false: 0, question: 1, other: 1 });
     expect(meta.units).toHaveLength(8);
     expect(meta.units.every((unit) => !("reference_fields" in unit))).toBe(true);
+    expect(meta.units.find((unit) => unit.decision === "question")).toMatchObject({
+      source_fields: { narrative_theme: "Patience and trust." },
+      corrected_fields: { narrative_theme: "Patience and trust." },
+    });
+  });
+
+  it("treats Question as completed for a fully annotated task", () => {
+    const document = parseVideoDocument(JSON.stringify(noSpeechFixture));
+    const records = Object.fromEntries(buildAnnotationUnits(document).map((unit, index) => [
+      unit.id,
+      {
+        unitId: unit.id,
+        decision: "question" as const,
+        correctedFields: {},
+        updatedAt: `2026-07-14T00:00:${String(index).padStart(2, "0")}.000Z`,
+      },
+    ]));
+
+    const meta = createAnnotationMeta("task-1", "A023", "hash", document, records);
+    expect(meta.export_status).toBe("complete");
+    expect(meta.counts).toEqual({ total: 8, pending: 0, true: 0, false: 0, question: 8, other: 0 });
   });
 });

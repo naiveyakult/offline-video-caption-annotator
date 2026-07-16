@@ -57,7 +57,7 @@ function mergeSavedState(tasks: ProjectTask[], saved?: ProjectSnapshot): Project
     if (!previous || previous.sourceSha256 !== task.sourceSha256) return task;
     const validUnitIds = new Set(task.document ? buildAnnotationUnits(task.document).map((unit) => unit.id) : []);
     const records = Object.fromEntries(Object.entries(previous.records ?? {}).filter(([unitId, record]) =>
-      validUnitIds.has(unitId) && ["true", "false", "other"].includes(record.decision),
+      validUnitIds.has(unitId) && ["true", "false", "question", "other"].includes(record.decision),
     ));
     const drafts = Object.fromEntries(Object.entries(previous.drafts ?? {}).filter(([unitId, draft]) =>
       validUnitIds.has(unitId) && draft.decision === "false",
@@ -151,12 +151,13 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
       pending: counts.pending + meta.counts.pending,
       true: counts.true + meta.counts.true,
       false: counts.false + meta.counts.false,
+      question: counts.question + meta.counts.question,
       other: counts.other + meta.counts.other,
     }),
-    { total: 0, pending: 0, true: 0, false: 0, other: 0 },
+    { total: 0, pending: 0, true: 0, false: 0, question: 0, other: 0 },
   );
   const manifest = {
-    schema_version: "2.0",
+    schema_version: "2.1",
     project_name: snapshot.name,
     annotator_id: annotatorId,
     export_status: overallStatus,

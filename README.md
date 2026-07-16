@@ -5,7 +5,7 @@
 ## 功能
 
 - 左侧播放原视频，支持自由拖动时间轴和重播当前片段。
-- 使用互斥的 `True / False / Other` 判定；False 修订英文，中文仅供对照。
+- 使用互斥的 `True / False / Question / Other` 判定；False 修订英文，Question 标记受分段或时间限制而无法合理修订的匹配问题，中文仅供对照。
 - 标注正文和 False 编辑框支持 12px / 14px / 16px 三档字号，并在本机记住选择。
 - Visible Text 不参与标注，导出时保持原样。
 - SQLite 自动保存任务、草稿、当前单元和视频位置，异常退出后可恢复。
@@ -36,7 +36,7 @@ exports/<timestamp>/
 
 ## Windows 免安装版
 
-从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.3.0_windows_x64_portable.zip`：
+从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.4.0_windows_x64_portable.zip`：
 
 1. 将 ZIP 完整解压到本机磁盘。
 2. 双击 `启动视频剧情标注.cmd`，不要单独移动或启动 EXE。
@@ -45,6 +45,10 @@ exports/<timestamp>/
 便携包不支持 UNC 或网络共享位置。当前版本未进行商业代码签名，Windows 可能显示 SmartScreen 提示。WebView2 缓存保存在 `%LOCALAPPDATA%`，标注数据仍只写入你选择的项目目录。
 
 Windows 便携包由 `.github/workflows/windows-portable.yml` 在 `windows-2022` 构建。普通提交生成保留 7 天的 Artifact；推送 `v*` 标签会创建公开 GitHub Release。
+
+## macOS Apple 芯片版
+
+从 GitHub Releases 下载 `视频剧情标注_0.4.0_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。当前构建使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
 
 ## macOS 本地构建
 

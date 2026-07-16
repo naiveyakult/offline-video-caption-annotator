@@ -404,7 +404,7 @@ export function createAnnotationMeta(
   exportedAt = new Date().toISOString(),
 ): AnnotationMeta {
   const units = buildAnnotationUnits(document);
-  const counts = { total: units.length, pending: 0, true: 0, false: 0, other: 0 };
+  const counts = { total: units.length, pending: 0, true: 0, false: 0, question: 0, other: 0 };
   const auditUnits = units.map((unit) => {
     const record = records[unit.id];
     const decision: Decision = record?.decision ?? "pending";
@@ -419,7 +419,7 @@ export function createAnnotationMeta(
     };
   });
   return {
-    schema_version: "2.0",
+    schema_version: "2.1",
     task_id: taskId,
     annotator_id: annotatorId,
     source_sha256: sourceSha256,
