@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "target": "aarch64-apple-darwin",
+  "minimum_macos": "13.0",
+  "license_mode": "LGPL-2.1-or-later",
+  "sources": [
+    {
+      "name": "pkgconf",
+      "version": "2.2.0",
+      "url": "https://distfiles.ariadne.space/pkgconf/pkgconf-2.2.0.tar.xz",
+      "sha256": "b06ff63a83536aa8c2f6422fa80ad45e4833f590266feb14eaddfe1d4c853c69"
+    },
+    {
+      "name": "freetype",
+      "version": "2.13.3",
+      "url": "https://github.com/freetype/freetype/archive/refs/tags/VER-2-13-3.tar.gz",
+      "sha256": "bc5c898e4756d373e0d991bab053036c5eb2aa7c0d5c67e8662ddc6da40c4103"
+    },
+    {
+      "name": "fribidi",
+      "version": "1.0.16",
+      "url": "https://github.com/fribidi/fribidi/archive/refs/tags/v1.0.16.tar.gz",
+      "sha256": "5a1d187a33daa58fcee2ad77f0eb9d136dd6fa4096239199ba31e850d397e8a8"
+    },
+    {
+      "name": "harfbuzz",
+      "version": "10.4.0",
+      "url": "https://github.com/harfbuzz/harfbuzz/archive/refs/tags/10.4.0.tar.gz",
+      "sha256": "0d25a3f74af4e8744700ac19050af5a80ae330378a5802a5cd71e523bb6fda1f"
+    },
+    {
+      "name": "libass",
+      "version": "0.17.3",
+      "url": "https://github.com/libass/libass/archive/refs/tags/0.17.3.tar.gz",
+      "sha256": "26fbfb7a7bd3e6d5c713f8a65a12b36084d1dde6efaed8a9996489054c4aeca0"
+    },
+    {
+      "name": "ffmpeg",
+      "version": "7.1.2",
+      "url": "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.1.2.tar.gz",
+      "sha256": "8cb1bb8cfa9aeae13279b4da42ae8307ae6777456d4270f2e603c95aa08ca8ef"
+    },
+    {
+      "name": "libplacebo",
+      "version": "7.351.0",
+      "url": "https://github.com/haasn/libplacebo/archive/refs/tags/v7.351.0.tar.gz",
+      "sha256": "716954501d9b76e6906fddda66febc5886493d0673dd265ec1e6e52f4e5cd7c6"
+    },
+    {
+      "name": "glad",
+      "version": "73db193f853e2ee079bf3ca8a64aa2eaf6459043",
+      "url": "https://github.com/Dav1dde/glad/archive/73db193f853e2ee079bf3ca8a64aa2eaf6459043.tar.gz",
+      "sha256": "33dbeae44d8315ece57e14eba4b1b4a02ac5406d1c4f49cd20048c91522a6b9a"
+    },
+    {
+      "name": "jinja",
+      "version": "15206881c006c79667fe5154fe80c01c65410679",
+      "url": "https://github.com/pallets/jinja/archive/15206881c006c79667fe5154fe80c01c65410679.tar.gz",
+      "sha256": "b88a20dcc2e34072fcf4159325bc6c34cd4b29a81a8b83d15d2f28ba561da296"
+    },
+    {
+      "name": "markupsafe",
+      "version": "28ace20b140d15c083e1cbc163ee6b7778ba098c",
+      "url": "https://github.com/pallets/markupsafe/archive/28ace20b140d15c083e1cbc163ee6b7778ba098c.tar.gz",
+      "sha256": "bead4c1f90f02956a082c6f026237e1e106a00636f4b26c3f16921631eb8737f"
+    },
+    {
+      "name": "Vulkan-Headers",
+      "version": "cacef3039d277c448c89336290ec3937270b0996",
+      "url": "https://github.com/KhronosGroup/Vulkan-Headers/archive/cacef3039d277c448c89336290ec3937270b0996.tar.gz",
+      "sha256": "400dc4bc49438f24ab9e90e6e587d9b1621a236f05eba80f6c048d7a1a96d353"
+    },
+    {
+      "name": "fast_float",
+      "version": "1bf70101536d37fa9954cc4f03fd0903d045a9f3",
+      "url": "https://github.com/fastfloat/fast_float/archive/1bf70101536d37fa9954cc4f03fd0903d045a9f3.tar.gz",
+      "sha256": "95c7730f3db8bfb8568e26387bed5df5284158c408d2c6411ed8ad4f5a6dc9ae"
+    },
+    {
+      "name": "mpv",
+      "version": "0.41.0",
+      "url": "https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz",
+      "sha256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
+    }
+  ]
+}

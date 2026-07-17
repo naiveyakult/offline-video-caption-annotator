@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { parseVideoDocument } from "../domain/annotation";
 import type { ProjectTask } from "../domain/types";
+import type { MpvClient, MpvPlaybackState } from "../media/mpv-client";
 import { captionFixture } from "../test/caption-fixture";
 import { AnnotationWorkspace } from "./AnnotationWorkspace";
 
@@ -326,6 +327,7 @@ describe("AnnotationWorkspace", () => {
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     renderWorkspace();
+    await waitFor(() => expect(document.querySelector("video")).not.toBeNull());
     await user.click(screen.getByRole("tab", { name: /Storyline/ }));
     await user.click(screen.getAllByRole("button", { name: /播放 Storyline/ })[0]!);
     const video = document.querySelector("video")!;
@@ -354,6 +356,7 @@ describe("AnnotationWorkspace", () => {
         onAnnotationFontSizeChange={vi.fn()}
       />,
     );
+    await waitFor(() => expect(document.querySelector("video")).not.toBeNull());
     const video = document.querySelector("video")!;
     Object.defineProperty(video, "duration", { configurable: true, value: 10 });
     fireEvent.loadedMetadata(video);
@@ -372,5 +375,132 @@ describe("AnnotationWorkspace", () => {
     fireEvent.timeUpdate(video);
     expect(pause).not.toHaveBeenCalled();
     expect(screen.getByText("00:06.00 / 00:10.00")).toBeInTheDocument();
+  });
+
+  it("uses the native mpv backend with complete custom controls when available", async () => {
+    const user = userEvent.setup();
+    const state: MpvPlaybackState = {
+      ready: true,
+      duration: 12,
+      currentTime: 2.5,
+      paused: true,
+      volume: 80,
+      muted: false,
+      ended: false,
+    };
+    const mpv: MpvClient = {
+      probe: vi.fn().mockResolvedValue({ available: true }),
+      create: vi.fn().mockResolvedValue(undefined),
+      load: vi.fn().mockResolvedValue(undefined),
+      setBounds: vi.fn().mockResolvedValue(undefined),
+      state: vi.fn().mockResolvedValue(state),
+      play: vi.fn().mockResolvedValue(undefined),
+      pause: vi.fn().mockResolvedValue(undefined),
+      seek: vi.fn().mockResolvedValue(undefined),
+      setVolume: vi.fn().mockResolvedValue(undefined),
+      setMuted: vi.fn().mockResolvedValue(undefined),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    };
+
+    render(
+      <AnnotationWorkspace
+        task={task}
+        mpvClient={mpv}
+        annotationFontSize={14}
+        onBack={vi.fn()}
+        onCommit={vi.fn()}
+        onDraft={vi.fn()}
+        onVideoPosition={vi.fn()}
+        onAnnotationFontSizeChange={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(mpv.load).toHaveBeenCalledWith(task.videoPath, 0));
+    expect(document.querySelector("video")).not.toBeInTheDocument();
+    expect(screen.getByTestId("mpv-video-surface")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "播放视频" }));
+    expect(mpv.play).toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "静音" }));
+    expect(mpv.setMuted).toHaveBeenCalledWith(true);
+    fireEvent.change(screen.getByRole("slider", { name: "音量" }), { target: { value: "45" } });
+    expect(mpv.setVolume).toHaveBeenCalledWith(45);
+    fireEvent.change(screen.getByRole("slider", { name: "视频进度" }), { target: { value: "6.25" } });
+    expect(mpv.seek).toHaveBeenCalledWith(6.25);
+    expect(screen.getByRole("button", { name: "进入全屏" })).toBeInTheDocument();
+  });
+
+  it("falls back to the system video player with a retry action when mpv initialization fails", async () => {
+    const mpv: MpvClient = {
+      probe: vi.fn().mockResolvedValue({ available: true }),
+      create: vi.fn().mockRejectedValue(new Error("libmpv could not be loaded")),
+      load: vi.fn(),
+      setBounds: vi.fn(),
+      state: vi.fn(),
+      play: vi.fn(),
+      pause: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+      setMuted: vi.fn(),
+      destroy: vi.fn(),
+    };
+
+    render(
+      <AnnotationWorkspace
+        task={task}
+        mpvClient={mpv}
+        annotationFontSize={14}
+        onBack={vi.fn()}
+        onCommit={vi.fn()}
+        onDraft={vi.fn()}
+        onVideoPosition={vi.fn()}
+        onAnnotationFontSizeChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("libmpv could not be loaded");
+    expect(document.querySelector("video")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试 libmpv" })).toBeInTheDocument();
+  });
+
+  it("falls back when the native renderer reports an asynchronous playback error", async () => {
+    const mpv: MpvClient = {
+      probe: vi.fn().mockResolvedValue({ available: true }),
+      create: vi.fn().mockResolvedValue(undefined),
+      load: vi.fn().mockResolvedValue(undefined),
+      setBounds: vi.fn().mockResolvedValue(undefined),
+      state: vi.fn().mockResolvedValue({
+        ready: true,
+        duration: 12,
+        currentTime: 0,
+        paused: true,
+        volume: 100,
+        muted: false,
+        ended: false,
+        error: "视频渲染失败",
+      }),
+      play: vi.fn(),
+      pause: vi.fn(),
+      seek: vi.fn(),
+      setVolume: vi.fn(),
+      setMuted: vi.fn(),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    };
+
+    render(
+      <AnnotationWorkspace
+        task={task}
+        mpvClient={mpv}
+        annotationFontSize={14}
+        onBack={vi.fn()}
+        onCommit={vi.fn()}
+        onDraft={vi.fn()}
+        onVideoPosition={vi.fn()}
+        onAnnotationFontSizeChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("视频渲染失败");
+    expect(document.querySelector("video")).toBeInTheDocument();
+    expect(mpv.destroy).toHaveBeenCalled();
   });
 });

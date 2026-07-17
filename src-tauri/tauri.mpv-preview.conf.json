@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "resources": {
+      "../LICENSE": "LICENSE",
+      "../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt",
+      "../scripts/macos/libmpv-runtime.json": "libmpv-runtime.json",
+      "frameworks/licenses": "licenses"
+    },
+    "macOS": {
+      "frameworks": ["frameworks/libmpv.2.dylib"]
+    }
+  }
+}

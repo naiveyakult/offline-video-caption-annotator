@@ -120,8 +120,18 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .save-indicator { display: flex; align-items: center; gap: 5px; color: var(--green); font-size: 11px; margin-left: 12px; white-space: nowrap; }
 .workspace-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 42% 58%; }
 .video-pane { min-width: 0; padding: 26px; background: #1b211e; display: flex; flex-direction: column; }
-.video-frame { min-height: 280px; flex: 0 1 62%; border-radius: 14px; overflow: hidden; background: #080b09; display: grid; place-items: center; box-shadow: 0 16px 45px rgba(0,0,0,.28); }
+.video-frame { position: relative; min-height: 280px; flex: 0 1 62%; border-radius: 14px; overflow: hidden; background: #080b09; display: grid; place-items: center; box-shadow: 0 16px 45px rgba(0,0,0,.28); }
 .video-frame video { width: 100%; height: 100%; max-height: 65vh; object-fit: contain; background: black; }
+.mpv-video-surface { position: absolute; inset: 0; visibility: hidden; background: #000; }
+.mpv-video-surface.visible { visibility: visible; }
+.mpv-loading { color: #b9c2bc; font-size: 11px; }
+.mpv-controls { display: flex; align-items: center; gap: 8px; margin-top: 12px; color: #dce2de; }
+.mpv-controls button { width: 32px; height: 30px; padding: 0; border: 1px solid #3c4641; border-radius: 8px; background: #28302c; color: #e5e9e6; display: grid; place-items: center; }
+.mpv-controls button:hover { background: #343e38; }
+.mpv-controls input { width: 110px; accent-color: #70c39d; }
+.mpv-controls button:last-child { margin-left: auto; }
+.mpv-fallback { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; padding: 9px 11px; border: 1px solid #725e3e; border-radius: 8px; background: #332c21; color: #f3d9af; font-size: 10px; line-height: 1.45; }
+.mpv-fallback button { flex: 0 0 auto; border: 1px solid #8d754d; border-radius: 7px; background: #473a28; color: #ffe3b6; padding: 6px 9px; }
 .video-timeline { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; margin-top: 15px; color: #dce2de; }
 .video-timeline input { width: 100%; height: 18px; margin: 0; accent-color: #70c39d; cursor: ew-resize; }
 .video-timeline input:disabled { cursor: not-allowed; opacity: .45; }
@@ -130,6 +140,11 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .video-meta span:first-child { color: #e5e9e6; }
 .replay-button { margin-top: 18px; align-self: flex-start; background: #28302c; border-color: #39443e; color: #e5e9e6; }
 .annotation-pane { background: #f5f7f4; display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-left: 1px solid #2b332f; }
+.workspace-shell.video-focus .workspace-header, .workspace-shell.video-focus .annotation-pane { display: none; }
+.workspace-shell.video-focus .workspace-grid { display: block; background: #080b09; }
+.workspace-shell.video-focus .video-pane { width: 100%; height: 100%; padding: 14px 22px; }
+.workspace-shell.video-focus .video-frame { flex: 1 1 auto; max-height: none; }
+.workspace-shell.video-focus .video-meta, .workspace-shell.video-focus .replay-button { display: none; }
 .theme-tabs { flex: 0 0 61px; display: flex; gap: 4px; padding: 12px 22px 0; background: white; border-bottom: 1px solid var(--line); }
 .theme-tab { border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 0 13px 12px; color: #747c77; font-size: 12px; font-weight: 600; }
 .theme-tab span { margin-left: 5px; color: #a0a6a2; font-weight: 500; font-size: 10px; }

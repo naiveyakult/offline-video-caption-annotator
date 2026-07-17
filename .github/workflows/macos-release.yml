@@ -1,17 +1,17 @@
-name: macOS release
+name: macOS libmpv preview
 
 on:
   push:
-    tags: ["v0.4.1"]
+    tags: ["v0.4.2-mpv-preview.1"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  RELEASE_TAG: v0.4.1
-  DMG_NAME: 视频剧情标注_0.4.1_aarch64.dmg
-  SHA_NAME: 视频剧情标注_0.4.1_aarch64.dmg.sha256
+  RELEASE_TAG: v0.4.2-mpv-preview.1
+  DMG_NAME: 视频剧情标注_0.4.2-mpv-preview.1_aarch64.dmg
+  SHA_NAME: 视频剧情标注_0.4.2-mpv-preview.1_aarch64.dmg.sha256
 
 jobs:
   build-macos:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: v0.4.1
+          ref: v0.4.2-mpv-preview.1
 
       - uses: actions/setup-node@v4
         with:
@@ -32,6 +32,27 @@ jobs:
 
       - name: Install isolated Rust toolchain
         run: npm run rust:setup
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/offline-video-caption-annotator/libmpv-build/downloads
+            ~/Library/Caches/offline-video-caption-annotator/libmpv-build/prefix
+          key: macos-libmpv-${{ hashFiles('scripts/macos/libmpv-runtime.json', 'scripts/macos/build-libmpv.sh') }}
+
+      - name: Build pinned LGPL libmpv runtime
+        run: |
+          test -f scripts/macos/libmpv-runtime.json
+          scripts/macos/build-libmpv.sh
+
+      - name: Smoke-test synthetic AAC PCE audio
+        run: |
+          ffmpeg="$HOME/Library/Caches/offline-video-caption-annotator/libmpv-build/prefix/bin/ffmpeg"
+          "$ffmpeg" -hide_banner -loglevel warning -y \
+            -f lavfi -i 'sine=frequency=880:sample_rate=48000:duration=2' \
+            -filter_complex '[0:a]pan=6.1|FL=c0|FR=c0|FC=c0|LFE=c0|BC=c0|SL=c0|SR=c0[a]' \
+            -map '[a]' -c:a aac -b:a 192k "$RUNNER_TEMP/aac-pce.mp4"
+          MPV_SMOKE_AO=null scripts/macos/smoke-libmpv.sh "$RUNNER_TEMP/aac-pce.mp4"
 
       - name: Test frontend
         run: npm run test:run
@@ -49,7 +70,7 @@ jobs:
           ./scripts/with-rust.sh cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
       - name: Build macOS Apple Silicon bundles
-        run: npm run tauri:build -- --config src-tauri/tauri.macos.conf.json
+        run: npm run tauri:build -- --config src-tauri/tauri.mpv-preview.conf.json
 
       - name: Verify and stage macOS assets
         shell: bash
@@ -57,19 +78,28 @@ jobs:
           set -euo pipefail
 
           app_path="src-tauri/target/release/bundle/macos/视频剧情标注.app"
-          dmg_path="src-tauri/target/release/bundle/dmg/${DMG_NAME}"
+          built_dmg_path="src-tauri/target/release/bundle/dmg/视频剧情标注_0.4.2_aarch64.dmg"
           binary_path="${app_path}/Contents/MacOS/offline-video-annotator"
+          libmpv_path="${app_path}/Contents/Frameworks/libmpv.2.dylib"
 
           test -d "${app_path}"
-          test -f "${dmg_path}"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")" = "0.4.1"
+          test -f "${built_dmg_path}"
+          test -f "${app_path}/Contents/Resources/THIRD_PARTY_NOTICES.txt"
+          test -f "${app_path}/Contents/Resources/libmpv-runtime.json"
+          test -f "${app_path}/Contents/Resources/licenses/mpv-LGPL-2.1.txt"
+          test -f "${app_path}/Contents/Resources/licenses/FFmpeg-LGPL-2.1.txt"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")" = "0.4.2"
           test "$(lipo -archs "${binary_path}")" = "arm64"
+          test "$(lipo -archs "${libmpv_path}")" = "arm64"
+          test "$(otool -D "${libmpv_path}" | tail -1)" = "@rpath/libmpv.2.dylib"
+          otool -L "${libmpv_path}"
+          ! otool -L "${libmpv_path}" | grep -E '/opt/homebrew|/usr/local'
           codesign --verify --deep --strict --verbose=2 "${app_path}"
           codesign -dv --verbose=4 "${app_path}" 2>&1 | grep -q "Signature=adhoc"
-          hdiutil verify "${dmg_path}"
+          hdiutil verify "${built_dmg_path}"
 
           mkdir -p release-assets
-          cp "${dmg_path}" "release-assets/${DMG_NAME}"
+          cp "${built_dmg_path}" "release-assets/${DMG_NAME}"
           (
             cd release-assets
             shasum -a 256 "${DMG_NAME}" > "${SHA_NAME}"
@@ -77,7 +107,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: 视频剧情标注-0.4.1-macos-aarch64
+          name: 视频剧情标注-0.4.2-mpv-preview.1-macos-aarch64
           path: release-assets/*
           retention-days: 7
           compression-level: 0
@@ -90,17 +120,17 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: 视频剧情标注-0.4.1-macos-aarch64
+          name: 视频剧情标注-0.4.2-mpv-preview.1-macos-aarch64
           path: release-assets
 
-      - name: Publish macOS v0.4.1 assets
+      - name: Publish macOS libmpv prerelease assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           test -f "release-assets/${DMG_NAME}"
           test -f "release-assets/${SHA_NAME}"
           if ! gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release create "${RELEASE_TAG}" --generate-notes --title "视频剧情标注 ${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" || true
+            gh release create "${RELEASE_TAG}" --prerelease --generate-notes --title "视频剧情标注 ${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" || true
           fi
           gh release upload "${RELEASE_TAG}" \
             "release-assets/${DMG_NAME}" \

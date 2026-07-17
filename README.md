@@ -47,9 +47,13 @@ exports/<timestamp>/
 
 Windows 便携包由 `.github/workflows/windows-portable.yml` 在 `windows-2022` 构建。普通提交生成保留 7 天的 Artifact；推送 `v*` 标签会创建公开 GitHub Release。
 
-## macOS Apple 芯片版
+## macOS Apple 芯片 libmpv 测试版
 
-从 GitHub Releases 下载 `视频剧情标注_0.4.1_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。当前构建使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
+为解决部分 AAC/PCE 音轨在 WKWebView 中没有声音的问题，`v0.4.2-mpv-preview.1` 在 macOS 内嵌 libmpv，并使用 FFmpeg 解码音频。Windows 继续使用原播放器。
+
+从 GitHub Releases 下载 `视频剧情标注_0.4.2-mpv-preview.1_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。该版本为公开预发布测试版，使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
+
+macOS 标注页提供播放/暂停、音量、静音、时间轴、时间显示、视频专注模式和重播当前片段等自定义控件。libmpv 初始化或加载失败时会自动回退到系统播放器并显示原因，也可以点击“重试 libmpv”。
 
 升级软件不会清空标注进度。重新打开原项目目录时，应用会继续读取 `.annotation-workspace` 中的判定、False 草稿、当前单元和视频位置；进行中的任务完成后，下一次导出才会生成其结果文件。
 
@@ -63,13 +67,15 @@ npm run rust:setup
 npm run test:run
 npm run lint
 npm run typecheck
-npm run tauri:dev
+npm run build
+scripts/macos/build-libmpv.sh
+LIBMPV_PATH="$PWD/src-tauri/frameworks/libmpv.2.dylib" npm run tauri:dev
 ```
 
 Rust、Cargo 与 rustup 安装在项目的 `.tools/`，不会修改全局环境。构建 `.app` 和 `.dmg`：
 
 ```bash
-npm run tauri:build
+npm run tauri:build -- --config src-tauri/tauri.mpv-preview.conf.json
 ```
 
 产物位于 `src-tauri/target/release/bundle/`。未公证的本地构建在其他 Mac 首次启动时需要右键选择“打开”。
@@ -84,4 +90,4 @@ npm run tauri:build
 
 ## License
 
-[MIT](LICENSE)。Windows 便携包中的 WebView2 Fixed Version Runtime 受 Microsoft 的相应许可条款约束，详见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。
+[MIT](LICENSE)。Windows 便携包中的 WebView2 Fixed Version Runtime，以及 macOS 测试版内嵌的 LGPL libmpv/FFmpeg 运行时受各自许可条款约束，详见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)。

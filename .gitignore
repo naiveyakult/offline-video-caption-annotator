@@ -6,6 +6,8 @@ node_modules/
 artifacts/
 dist/
 outputs/
+src-tauri/frameworks/*.dylib
+src-tauri/frameworks/licenses/
 src-tauri/target/
 src-tauri/gen/
 .annotation-workspace/

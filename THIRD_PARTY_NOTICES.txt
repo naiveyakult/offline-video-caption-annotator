@@ -13,3 +13,41 @@ https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution
 
 Microsoft Edge and WebView2 are trademarks of Microsoft Corporation. Microsoft
 does not endorse this application.
+
+The macOS Apple Silicon build redistributes the following libraries built from
+the exact sources and checksums recorded in scripts/macos/libmpv-runtime.json:
+
+- mpv 0.41.0, built with -Dgpl=false and without the command-line player,
+  scripts, user configuration, or GPL-only features (LGPL-2.1-or-later)
+  https://github.com/mpv-player/mpv
+- FFmpeg 7.1.2, built without GPL or nonfree components (LGPL-2.1-or-later)
+  https://ffmpeg.org/
+- libplacebo 7.351.0 (LGPL-2.1-or-later)
+  https://code.videolan.org/videolan/libplacebo
+- libass 0.17.3 (ISC)
+  https://github.com/libass/libass
+- HarfBuzz 10.4.0 (Old MIT)
+  https://github.com/harfbuzz/harfbuzz
+- FreeType 2.13.3 (FreeType License or GPL-2.0-or-later; this distribution uses
+  the FreeType License option)
+  https://freetype.org/
+- FriBidi 1.0.16 (LGPL-2.1-or-later)
+  https://github.com/fribidi/fribidi
+- pkgconf 2.2.0 (ISC; build-time only)
+  https://github.com/pkgconf/pkgconf
+- Glad (MIT), Jinja (BSD-3-Clause), MarkupSafe (BSD-3-Clause), Vulkan-Headers
+  (Apache-2.0), and fast_float (Apache-2.0 or MIT) at the exact libplacebo
+  7.351.0 submodule revisions (generator, headers, or build-time components)
+  https://github.com/Dav1dde/glad
+  https://github.com/pallets/jinja
+  https://github.com/pallets/markupsafe
+  https://github.com/KhronosGroup/Vulkan-Headers
+  https://github.com/fastfloat/fast_float
+
+The application dynamically loads the bundled libmpv shared library. FFmpeg,
+libplacebo, and the other runtime dependencies are statically linked into that
+replaceable libmpv library by the reproducible source build script. Copyright
+notices and complete license texts are included in the application's Resources
+directory; the pinned upstream source archives are identified by the bundled
+runtime manifest. The application does not use user-installed mpv, FFmpeg, or
+Homebrew libraries.

@@ -10,6 +10,8 @@ use std::{
 };
 use tauri::Manager;
 
+mod mpv;
+
 const WORKSPACE_DIR: &str = ".annotation-workspace";
 const DATABASE_FILE: &str = "session.sqlite";
 
@@ -473,12 +475,24 @@ fn export_project(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(mpv::MpvManager::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             open_project,
             save_session,
-            export_project
+            export_project,
+            mpv::mpv_probe,
+            mpv::mpv_create,
+            mpv::mpv_load,
+            mpv::mpv_set_bounds,
+            mpv::mpv_state,
+            mpv::mpv_play,
+            mpv::mpv_pause,
+            mpv::mpv_seek,
+            mpv::mpv_set_volume,
+            mpv::mpv_set_muted,
+            mpv::mpv_destroy
         ])
         .run(tauri::generate_context!())
         .expect("failed to run video annotation application");

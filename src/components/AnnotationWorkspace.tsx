@@ -13,11 +13,18 @@ import {
   CircleAlert,
   CircleHelp,
   Download,
+  Maximize2,
+  Minimize2,
+  Pause,
   Play,
   RotateCcw,
   Save,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { isTauri } from "@tauri-apps/api/core";
 import { buildAnnotationUnits, timeToSeconds, validateCorrection } from "../domain/annotation";
 import type {
   AnnotationFontSize,
@@ -26,6 +33,12 @@ import type {
   ProjectTask,
   Theme,
 } from "../domain/types";
+import {
+  elementBounds,
+  nativeMpvClient,
+  type MpvClient,
+  type MpvPlaybackState,
+} from "../media/mpv-client";
 
 const THEME_LABELS: Record<Theme, string> = {
   overview: "Overview",
@@ -53,6 +66,7 @@ function formatVideoTime(seconds: number) {
 
 interface AnnotationWorkspaceProps {
   task: ProjectTask;
+  mpvClient?: MpvClient;
   annotationFontSize: AnnotationFontSize;
   initialTheme?: Theme;
   initialUnitId?: string;
@@ -74,6 +88,7 @@ interface AnnotationWorkspaceProps {
 
 export function AnnotationWorkspace({
   task,
+  mpvClient = nativeMpvClient,
   annotationFontSize,
   initialTheme = "overview",
   initialUnitId,
@@ -93,8 +108,148 @@ export function AnnotationWorkspace({
   const [segmentEnd, setSegmentEnd] = useState<number>();
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [mpvMode, setMpvMode] = useState<"probing" | "starting" | "active" | "fallback">("probing");
+  const [mpvError, setMpvError] = useState<string>();
+  const [mpvState, setMpvState] = useState<MpvPlaybackState>({
+    ready: false,
+    duration: 0,
+    currentTime: 0,
+    paused: true,
+    volume: 100,
+    muted: false,
+    ended: false,
+  });
+  const [mpvAttempt, setMpvAttempt] = useState(0);
+  const [videoFocus, setVideoFocus] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mpvSurfaceRef = useRef<HTMLDivElement>(null);
   const programmaticSeekRef = useRef(false);
+  const mpvGenerationRef = useRef(0);
+  const lastReportedPositionRef = useRef(Number.NaN);
+  const lastMpvPausedRef = useRef(true);
+  const resumePositionRef = useRef(task.videoPosition);
+
+  useEffect(() => {
+    const generation = ++mpvGenerationRef.current;
+    let disposed = false;
+    setMpvError(undefined);
+    setMpvMode("probing");
+
+    const initialize = async () => {
+      try {
+        const capability = await mpvClient.probe();
+        if (disposed || generation !== mpvGenerationRef.current) return;
+        if (!capability.available) {
+          setMpvMode("fallback");
+          if (capability.error) setMpvError(capability.error);
+          return;
+        }
+        setMpvMode("starting");
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        if (disposed || generation !== mpvGenerationRef.current) return;
+        const surface = mpvSurfaceRef.current;
+        if (!surface) throw new Error("libmpv 视频区域未就绪");
+        await mpvClient.create(elementBounds(surface));
+        if (disposed || generation !== mpvGenerationRef.current) {
+          await mpvClient.destroy();
+          return;
+        }
+        await mpvClient.load(task.videoPath, resumePositionRef.current);
+        setMpvMode("active");
+      } catch (error) {
+        if (disposed || generation !== mpvGenerationRef.current) return;
+        setMpvError(error instanceof Error ? error.message : String(error));
+        setMpvMode("fallback");
+        await Promise.resolve(mpvClient.destroy()).catch(() => undefined);
+      }
+    };
+    void initialize();
+
+    return () => {
+      disposed = true;
+      void Promise.resolve(mpvClient.destroy()).catch(() => undefined);
+    };
+  }, [mpvClient, mpvAttempt, task.id, task.videoPath]);
+
+  useEffect(() => {
+    if (mpvMode !== "active" || !isTauri()) return;
+    const surface = mpvSurfaceRef.current;
+    if (!surface) return;
+    let active = true;
+    const syncBounds = () => void mpvClient.setBounds(elementBounds(surface)).catch((error) => {
+      if (!active) return;
+      setMpvError(error instanceof Error ? error.message : String(error));
+      setMpvMode("fallback");
+      void Promise.resolve(mpvClient.destroy()).catch(() => undefined);
+    });
+    syncBounds();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(syncBounds);
+    observer?.observe(surface);
+    window.addEventListener("resize", syncBounds);
+    window.addEventListener("scroll", syncBounds, true);
+    return () => {
+      active = false;
+      observer?.disconnect();
+      window.removeEventListener("resize", syncBounds);
+      window.removeEventListener("scroll", syncBounds, true);
+    };
+  }, [mpvClient, mpvMode, videoFocus]);
+
+  useEffect(() => {
+    if (mpvMode !== "active") return;
+    let disposed = false;
+    const update = async () => {
+      try {
+        const state = await mpvClient.state();
+        if (disposed) return;
+        if (state.error) throw new Error(state.error);
+        setMpvState(state);
+        setVideoDuration(state.duration);
+        setVideoCurrentTime(state.currentTime);
+        resumePositionRef.current = state.currentTime;
+        const pauseChanged = state.paused !== lastMpvPausedRef.current;
+        if (pauseChanged || !Number.isFinite(lastReportedPositionRef.current)
+          || Math.abs(state.currentTime - lastReportedPositionRef.current) >= 0.75) {
+          lastReportedPositionRef.current = state.currentTime;
+          onVideoPosition(state.currentTime);
+        }
+        lastMpvPausedRef.current = state.paused;
+      } catch (error) {
+        if (disposed) return;
+        setMpvError(error instanceof Error ? error.message : String(error));
+        setMpvMode("fallback");
+        void Promise.resolve(mpvClient.destroy()).catch(() => undefined);
+      }
+    };
+    void update();
+    const timer = window.setInterval(() => void update(), 100);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [mpvClient, mpvMode, onVideoPosition]);
+
+  useEffect(() => {
+    if (mpvMode === "active" && segmentEnd !== undefined && mpvState.currentTime >= segmentEnd) {
+      void mpvClient.pause();
+      setSegmentEnd(undefined);
+    }
+  }, [mpvClient, mpvMode, mpvState.currentTime, segmentEnd]);
+
+  useEffect(() => {
+    if (mpvMode !== "active" || !isTauri()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const appWindow = getCurrentWindow();
+    void appWindow.onResized(async () => {
+      const fullscreen = await appWindow.isFullscreen().catch(() => videoFocus);
+      if (!disposed) setVideoFocus(fullscreen);
+    }).then((stop) => { unlisten = stop; }).catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [mpvMode, videoFocus]);
 
   const units = useMemo(
     () => (task.document ? buildAnnotationUnits(task.document) : []),
@@ -134,9 +289,17 @@ export function AnnotationWorkspace({
   const playUnit = (unit: AnnotationUnit) => {
     setActiveUnitId(unit.id);
     onUnitChange?.(unit.id);
-    if (!unit.startTime || !unit.endTime || !videoRef.current) return;
+    if (!unit.startTime || !unit.endTime) return;
     programmaticSeekRef.current = true;
     const start = timeToSeconds(unit.startTime);
+    resumePositionRef.current = start;
+    if (mpvMode === "active") {
+      setVideoCurrentTime(start);
+      setSegmentEnd(timeToSeconds(unit.endTime));
+      void mpvClient.seek(start).then(() => mpvClient.play());
+      return;
+    }
+    if (!videoRef.current) return;
     videoRef.current.currentTime = start;
     setVideoCurrentTime(start);
     setSegmentEnd(timeToSeconds(unit.endTime));
@@ -144,11 +307,19 @@ export function AnnotationWorkspace({
   };
 
   const seekFreely = (position: number) => {
-    const video = videoRef.current;
-    if (!video) return;
     const next = Math.max(0, Math.min(position, videoDuration || 0));
     setSegmentEnd(undefined);
     programmaticSeekRef.current = false;
+    resumePositionRef.current = next;
+    if (mpvMode === "active") {
+      void mpvClient.seek(next);
+      setVideoCurrentTime(next);
+      lastReportedPositionRef.current = next;
+      onVideoPosition(next);
+      return;
+    }
+    const video = videoRef.current;
+    if (!video) return;
     video.currentTime = next;
     setVideoCurrentTime(next);
     onVideoPosition(next);
@@ -165,7 +336,7 @@ export function AnnotationWorkspace({
 
   return (
     <main
-      className="workspace-shell"
+      className={`workspace-shell ${videoFocus ? "video-focus" : ""}`}
       style={{ "--annotation-font-size": `${annotationFontSize}px` } as CSSProperties}
     >
       <header className="workspace-header">
@@ -206,7 +377,13 @@ export function AnnotationWorkspace({
       <section className="workspace-grid">
         <aside className="video-pane">
           <div className="video-frame">
-            <video
+            <div
+              ref={mpvSurfaceRef}
+              data-testid="mpv-video-surface"
+              className={`mpv-video-surface ${mpvMode === "active" || mpvMode === "starting" ? "visible" : ""}`}
+              aria-label="libmpv 视频画面"
+            />
+            {mpvMode === "fallback" && <video
               ref={videoRef}
               src={task.videoUrl || undefined}
               controls
@@ -215,7 +392,7 @@ export function AnnotationWorkspace({
                 const duration = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0;
                 setVideoDuration(duration);
                 programmaticSeekRef.current = true;
-                const restored = Math.min(task.videoPosition, duration || 0);
+                const restored = Math.min(resumePositionRef.current, duration || 0);
                 event.currentTarget.currentTime = restored;
                 setVideoCurrentTime(restored);
               }}
@@ -227,14 +404,55 @@ export function AnnotationWorkspace({
               onTimeUpdate={(event) => {
                 const current = event.currentTarget.currentTime;
                 setVideoCurrentTime(current);
+                resumePositionRef.current = current;
                 onVideoPosition(current);
                 if (segmentEnd !== undefined && current >= segmentEnd) {
                   event.currentTarget.pause();
                   setSegmentEnd(undefined);
                 }
               }}
-            />
+            />}
+            {(mpvMode === "probing" || mpvMode === "starting") && <span className="mpv-loading">libmpv 正在准备视频…</span>}
           </div>
+          {mpvError && mpvMode === "fallback" && (
+            <div className="mpv-fallback" role="alert">
+              <span>libmpv 启动失败，已切换系统播放器：{mpvError}</span>
+              <button type="button" onClick={() => setMpvAttempt((value) => value + 1)}>重试 libmpv</button>
+            </div>
+          )}
+          {mpvMode === "active" && (
+            <div className="mpv-controls" role="group" aria-label="libmpv 播放控制">
+              <button
+                type="button"
+                aria-label={mpvState.paused ? "播放视频" : "暂停视频"}
+                onClick={() => void (mpvState.paused ? mpvClient.play() : mpvClient.pause())}
+              >{mpvState.paused ? <Play size={16} /> : <Pause size={16} />}</button>
+              <button
+                type="button"
+                aria-label={mpvState.muted ? "取消静音" : "静音"}
+                onClick={() => void mpvClient.setMuted(!mpvState.muted)}
+              >{mpvState.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
+              <input
+                type="range"
+                aria-label="音量"
+                min="0"
+                max="100"
+                step="1"
+                value={mpvState.volume}
+                onChange={(event) => void mpvClient.setVolume(Number(event.currentTarget.value))}
+              />
+              <button
+                type="button"
+                aria-label={videoFocus ? "退出全屏" : "进入全屏"}
+                onClick={() => {
+                  if (!isTauri()) return;
+                  const next = !videoFocus;
+                  setVideoFocus(next);
+                  void getCurrentWindow().setFullscreen(next).catch(() => setVideoFocus(!next));
+                }}
+              >{videoFocus ? <Minimize2 size={16} /> : <Maximize2 size={16} />}</button>
+            </div>
+          )}
           <div className="video-timeline">
             <input
               aria-label="视频进度"
