@@ -119,9 +119,11 @@ function parseNativeTask(task: NativeTask): ProjectTask {
 
 function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
   const exportedAt = new Date().toISOString();
-  const validResults = snapshot.tasks
-    .filter((task): task is ProjectTask & { document: NonNullable<ProjectTask["document"]> } => Boolean(task.document && !task.error))
-    .map((task) => {
+  const evaluatedTasks = snapshot.tasks.map((task) => ({ task, status: recordsStatus(task) }));
+  const validResults = evaluatedTasks
+    .filter((entry): entry is { task: ProjectTask & { document: NonNullable<ProjectTask["document"]> }; status: "complete" } =>
+      entry.status === "complete" && Boolean(entry.task.document && !entry.task.error))
+    .map(({ task }) => {
       const meta = createAnnotationMeta(
         task.id,
         annotatorId,
@@ -140,11 +142,17 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
       };
       return { task, meta, payload };
     });
-  if (validResults.length === 0) throw new Error("没有可导出的有效任务");
-  const hasInvalidTasks = snapshot.tasks.some((task) => task.status === "invalid");
-  const overallStatus: "partial" | "complete" = !hasInvalidTasks && validResults.every(({ payload }) => payload.export_status === "complete")
-    ? "complete"
-    : "partial";
+  if (validResults.length === 0) throw new Error("当前没有已完成的任务可导出");
+  const overallStatus: "partial" | "complete" = validResults.length === snapshot.tasks.length ? "complete" : "partial";
+  const taskCounts = {
+    total: snapshot.tasks.length,
+    exported: validResults.length,
+    notStarted: evaluatedTasks.filter(({ status }) => status === "not_started").length,
+    inProgress: evaluatedTasks.filter(({ status }) => status === "in_progress").length,
+    complete: evaluatedTasks.filter(({ status }) => status === "complete").length,
+    invalid: evaluatedTasks.filter(({ status }) => status === "invalid").length,
+    skipped: snapshot.tasks.length - validResults.length,
+  };
   const aggregate = validResults.reduce(
     (counts, { meta }) => ({
       total: counts.total + meta.counts.total,
@@ -157,22 +165,27 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
     { total: 0, pending: 0, true: 0, false: 0, question: 0, other: 0 },
   );
   const manifest = {
-    schema_version: "2.1",
+    schema_version: "2.2",
     project_name: snapshot.name,
     annotator_id: annotatorId,
     export_status: overallStatus,
     exported_at: exportedAt,
     task_counts: {
-      total: snapshot.tasks.length,
-      exported: validResults.length,
-      invalid: snapshot.tasks.length - validResults.length,
+      total: taskCounts.total,
+      exported: taskCounts.exported,
+      not_started: taskCounts.notStarted,
+      in_progress: taskCounts.inProgress,
+      complete: taskCounts.complete,
+      invalid: taskCounts.invalid,
+      skipped: taskCounts.skipped,
     },
     annotation_counts: aggregate,
-    tasks: snapshot.tasks.map((task) => {
+    tasks: evaluatedTasks.map(({ task, status }) => {
       const result = validResults.find((candidate) => candidate.task.id === task.id);
       return result
         ? {
             task_id: task.id,
+            task_status: status,
             export_status: result.payload.export_status,
             source_json: task.jsonPath.split(/[\\/]/).pop(),
             source_video: task.videoPath.split(/[\\/]/).pop(),
@@ -182,14 +195,19 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
           }
         : {
             task_id: task.id,
-            export_status: "invalid",
+            task_status: status,
+            export_status: "skipped",
             source_json: task.jsonPath.split(/[\\/]/).pop() || null,
             source_video: task.videoPath.split(/[\\/]/).pop() || null,
-            error: task.error ?? "任务无有效数据",
+            skipped_reason: status === "not_started"
+              ? "任务尚未开始"
+              : status === "in_progress"
+                ? "任务尚未完成"
+                : `任务异常：${task.error ?? "任务无有效数据"}`,
           };
     }),
   };
-  return { tasks: validResults.map(({ payload }) => payload), manifest, overallStatus };
+  return { tasks: validResults.map(({ payload }) => payload), manifest, overallStatus, taskCounts };
 }
 
 export class TauriProjectStorage implements ProjectStorage {
@@ -216,13 +234,13 @@ export class TauriProjectStorage implements ProjectStorage {
   }
 
   async exportProject(snapshot: ProjectSnapshot, annotatorId: string): Promise<ExportResult> {
-    const { tasks, manifest, overallStatus } = buildExportPayload(snapshot, annotatorId);
+    const { tasks, manifest, overallStatus, taskCounts } = buildExportPayload(snapshot, annotatorId);
     const outputPath = await invoke<string>("export_project", {
       rootPath: snapshot.rootPath,
       tasks,
       manifestJson: JSON.stringify(manifest, null, 2),
     });
-    return { outputPath, status: overallStatus, taskCount: tasks.length };
+    return { outputPath, status: overallStatus, taskCount: tasks.length, taskCounts };
   }
 }
 
@@ -428,13 +446,13 @@ export class BrowserProjectStorage implements ProjectStorage {
   }
 
   async exportProject(snapshot: ProjectSnapshot, annotatorId: string): Promise<ExportResult> {
-    const { tasks, manifest, overallStatus } = buildExportPayload(snapshot, annotatorId);
+    const { tasks, manifest, overallStatus, taskCounts } = buildExportPayload(snapshot, annotatorId);
     tasks.forEach((task) => {
       download(`${task.task_id}.corrected.json`, task.corrected_json);
       download(`${task.task_id}.annotation_meta.json`, task.annotation_meta_json);
     });
     download("manifest.json", JSON.stringify(manifest, null, 2));
-    return { outputPath: "浏览器下载目录", status: overallStatus, taskCount: tasks.length };
+    return { outputPath: "浏览器下载目录", status: overallStatus, taskCount: tasks.length, taskCounts };
   }
 }
 

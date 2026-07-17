@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildAnnotationUnits } from "../domain/annotation";
 import { captionFixture } from "../test/caption-fixture";
-import { BrowserProjectStorage } from "./project-storage";
+import type { ProjectTask } from "../domain/types";
+import { BrowserProjectStorage, updateTaskStatus } from "./project-storage";
 
 function projectFile(name: string, content: string, relativePath: string, type: string) {
   const file = new File([content], name, { type });
@@ -19,6 +21,20 @@ function readBlob(blob: Blob): Promise<string> {
     reader.onerror = () => reject(reader.error);
     reader.readAsText(blob);
   });
+}
+
+function completeTask(task: ProjectTask): ProjectTask {
+  if (!task.document) throw new Error("测试任务必须有效");
+  const records = Object.fromEntries(buildAnnotationUnits(task.document).map((unit, index) => [
+    unit.id,
+    {
+      unitId: unit.id,
+      decision: "question" as const,
+      correctedFields: {},
+      updatedAt: `2026-07-17T00:00:${String(index).padStart(2, "0")}.000Z`,
+    },
+  ]));
+  return updateTaskStatus({ ...task, records });
 }
 
 describe("BrowserProjectStorage JSONL import", () => {
@@ -238,6 +254,15 @@ describe("BrowserProjectStorage JSONL import", () => {
         updatedAt: "2026-07-14T00:00:03.000Z",
       },
     };
+    first.tasks[0]!.drafts = {
+      "speech_transcript.0": {
+        unitId: "speech_transcript.0",
+        decision: "false",
+        fields: { speaker: "Speaker A", state: "Calm", content: "Draft content." },
+        updatedAt: "2026-07-14T00:00:04.000Z",
+      },
+    };
+    first.tasks[0]!.videoPosition = 12.34;
     await storage.saveProject(first);
 
     const restored = await storage.openFiles(files);
@@ -247,28 +272,39 @@ describe("BrowserProjectStorage JSONL import", () => {
       "other",
       "question",
     ]);
+    expect(restored.tasks[0]!.drafts["speech_transcript.0"]?.fields.content).toBe("Draft content.");
+    expect(restored.tasks[0]!.videoPosition).toBe(12.34);
   });
 
-  it("includes Question in the schema 2.1 batch manifest counts", async () => {
+  it("exports only completed tasks and keeps every task in the schema 2.2 manifest", async () => {
     const storage = new BrowserProjectStorage();
+    const rows = [
+      captionRow("clips/complete.mp4"),
+      captionRow("clips/progress.mp4"),
+      captionRow("clips/pending.mp4"),
+      captionRow("clips/missing.mp4"),
+    ].join("\n");
     const files = [
       projectFile(
         "scenes_export_final_caption_zh.jsonl",
-        captionRow("clips/1.mp4"),
+        rows,
         "export-batch/scenes_export_final_caption_zh.jsonl",
         "application/x-ndjson",
       ),
-      projectFile("1.mp4", "video", "export-batch/clips/1.mp4", "video/mp4"),
+      projectFile("complete.mp4", "video", "export-batch/clips/complete.mp4", "video/mp4"),
+      projectFile("progress.mp4", "video", "export-batch/clips/progress.mp4", "video/mp4"),
+      projectFile("pending.mp4", "video", "export-batch/clips/pending.mp4", "video/mp4"),
     ] as unknown as FileList;
     const project = await storage.openFiles(files);
-    project.tasks[0]!.records = {
+    project.tasks[0] = completeTask(project.tasks[0]!);
+    project.tasks[1] = updateTaskStatus({ ...project.tasks[1]!, records: {
       "overview.overall_visual_style": {
         unitId: "overview.overall_visual_style",
         decision: "question",
         correctedFields: {},
         updatedAt: "2026-07-14T00:00:00.000Z",
       },
-    };
+    } });
     const blobs: Blob[] = [];
     const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
       if (!(blob instanceof Blob)) throw new Error("导出内容必须使用 Blob");
@@ -278,23 +314,78 @@ describe("BrowserProjectStorage JSONL import", () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
 
     try {
-      await storage.exportProject(project, "A023");
+      const result = await storage.exportProject(project, "A023");
+      expect(result.taskCount).toBe(1);
+      expect(result.taskCounts).toEqual({
+        total: 4,
+        exported: 1,
+        notStarted: 1,
+        inProgress: 1,
+        complete: 1,
+        invalid: 1,
+        skipped: 3,
+      });
+      expect(blobs).toHaveLength(3);
+      const meta = JSON.parse(await readBlob(blobs[1]!)) as { schema_version: string; export_status: string };
       const manifest = JSON.parse(await readBlob(blobs.at(-1)!)) as {
         schema_version: string;
+        export_status: string;
+        task_counts: Record<string, number>;
         annotation_counts: Record<string, number>;
+        tasks: Array<Record<string, unknown>>;
       };
-      expect(manifest.schema_version).toBe("2.1");
+      expect(meta.schema_version).toBe("2.2");
+      expect(meta.export_status).toBe("complete");
+      expect(manifest.schema_version).toBe("2.2");
+      expect(manifest.export_status).toBe("partial");
+      expect(manifest.task_counts).toEqual({
+        total: 4,
+        exported: 1,
+        not_started: 1,
+        in_progress: 1,
+        complete: 1,
+        invalid: 1,
+        skipped: 3,
+      });
       expect(manifest.annotation_counts).toEqual({
         total: 9,
-        pending: 8,
+        pending: 0,
         true: 0,
         false: 0,
-        question: 1,
+        question: 9,
         other: 0,
       });
+      expect(manifest.tasks).toMatchObject([
+        { task_id: "complete", task_status: "complete", export_status: "complete" },
+        { task_id: "progress", task_status: "in_progress", export_status: "skipped", skipped_reason: "任务尚未完成" },
+        { task_id: "pending", task_status: "not_started", export_status: "skipped", skipped_reason: "任务尚未开始" },
+        { task_id: "missing", task_status: "invalid", export_status: "skipped" },
+      ]);
     } finally {
       createObjectUrl.mockRestore();
       click.mockRestore();
+    }
+  });
+
+  it("does not create downloads when there are no completed tasks", async () => {
+    const storage = new BrowserProjectStorage();
+    const files = [
+      projectFile(
+        "scenes_empty_final_caption_zh.jsonl",
+        captionRow("clips/1.mp4"),
+        "empty-export/scenes_empty_final_caption_zh.jsonl",
+        "application/x-ndjson",
+      ),
+      projectFile("1.mp4", "video", "empty-export/clips/1.mp4", "video/mp4"),
+    ] as unknown as FileList;
+    const project = await storage.openFiles(files);
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL");
+
+    try {
+      await expect(storage.exportProject(project, "A023")).rejects.toThrow("当前没有已完成的任务可导出");
+      expect(createObjectUrl).not.toHaveBeenCalled();
+    } finally {
+      createObjectUrl.mockRestore();
     }
   });
 });

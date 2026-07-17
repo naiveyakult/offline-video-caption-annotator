@@ -10,6 +10,7 @@
 - Visible Text 不参与标注，导出时保持原样。
 - SQLite 自动保存任务、草稿、当前单元和视频位置，异常退出后可恢复。
 - 原始 MP4 和 JSONL 永不修改，支持部分或完整导出。
+- 仅为全部单元已完成判定的任务生成结果文件；未开始、进行中和异常任务只保留在 manifest 状态清单中。
 - 全程离线，不依赖服务器、Docker 或中心数据库。
 
 ## 项目目录
@@ -36,7 +37,7 @@ exports/<timestamp>/
 
 ## Windows 免安装版
 
-从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.4.0_windows_x64_portable.zip`：
+从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.4.1_windows_x64_portable.zip`：
 
 1. 将 ZIP 完整解压到本机磁盘。
 2. 双击 `启动视频剧情标注.cmd`，不要单独移动或启动 EXE。
@@ -48,7 +49,9 @@ Windows 便携包由 `.github/workflows/windows-portable.yml` 在 `windows-2022`
 
 ## macOS Apple 芯片版
 
-从 GitHub Releases 下载 `视频剧情标注_0.4.0_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。当前构建使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
+从 GitHub Releases 下载 `视频剧情标注_0.4.1_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。当前构建使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
+
+升级软件不会清空标注进度。重新打开原项目目录时，应用会继续读取 `.annotation-workspace` 中的判定、False 草稿、当前单元和视频位置；进行中的任务完成后，下一次导出才会生成其结果文件。
 
 ## macOS 本地构建
 

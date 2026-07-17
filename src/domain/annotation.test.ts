@@ -103,7 +103,7 @@ describe("bilingual caption annotation domain", () => {
     expect(output.usage).toEqual(captionFixture.usage);
   });
 
-  it("exports schema 2.1 Question decisions and excludes Chinese and Visible Text units", () => {
+  it("exports schema 2.2 Question decisions and excludes Chinese and Visible Text units", () => {
     const document = parseVideoDocument(JSON.stringify(noSpeechFixture));
     const meta = createAnnotationMeta("task-1", "A023", "hash", document, {
       "overview.overall_visual_style": {
@@ -126,7 +126,7 @@ describe("bilingual caption annotation domain", () => {
       },
     });
 
-    expect(meta.schema_version).toBe("2.1");
+    expect(meta.schema_version).toBe("2.2");
     expect(meta.counts).toEqual({ total: 8, pending: 5, true: 1, false: 0, question: 1, other: 1 });
     expect(meta.units).toHaveLength(8);
     expect(meta.units.every((unit) => !("reference_fields" in unit))).toBe(true);

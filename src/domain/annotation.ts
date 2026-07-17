@@ -419,7 +419,7 @@ export function createAnnotationMeta(
     };
   });
   return {
-    schema_version: "2.1",
+    schema_version: "2.2",
     task_id: taskId,
     annotator_id: annotatorId,
     source_sha256: sourceSha256,

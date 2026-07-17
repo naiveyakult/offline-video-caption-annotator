@@ -44,7 +44,7 @@ export interface AnnotationMetaUnit {
 }
 
 export interface AnnotationMeta {
-  schema_version: "2.1";
+  schema_version: "2.2";
   task_id: string;
   annotator_id: string;
   source_sha256: string;
@@ -91,4 +91,13 @@ export interface ExportResult {
   outputPath: string;
   status: "partial" | "complete";
   taskCount: number;
+  taskCounts: {
+    total: number;
+    exported: number;
+    notStarted: number;
+    inProgress: number;
+    complete: number;
+    invalid: number;
+    skipped: number;
+  };
 }

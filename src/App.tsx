@@ -10,6 +10,7 @@ import {
   createProjectStorage,
   type ProjectStorage,
 } from "./storage/project-storage";
+import { formatExportSuccess } from "./export-message";
 
 export default function App() {
   const annotatorId = useAppStore((state) => state.annotatorId);
@@ -85,7 +86,7 @@ export default function App() {
     if (!project) return;
     try {
       const result = await storageRef.current.exportProject(project, annotatorId);
-      setToast(`已导出 ${result.taskCount} 个任务（${result.status === "complete" ? "完整" : "部分"}）：${result.outputPath}`);
+      setToast(formatExportSuccess(result));
     } catch (error) {
       setToast(`导出失败：${error instanceof Error ? error.message : String(error)}`);
     }
