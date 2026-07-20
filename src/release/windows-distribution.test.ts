@@ -31,9 +31,9 @@ describe("Windows portable distribution contract", () => {
       };
     };
 
-    expect(packageJson.version).toBe("0.4.2");
+    expect(packageJson.version).toBe("0.4.4");
     expect(shared.version).toBe(packageJson.version);
-    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.4.2"');
+    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.4.4"');
     expect(read("scripts/windows/使用说明.txt")).toContain("0.4.1");
     expect(shared.app.security.assetProtocol.scope).toEqual([]);
     expect(mac.bundle.targets).toEqual(["dmg", "app"]);
@@ -77,7 +77,7 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("gh release upload");
     expect(workflow).toContain("gh release create");
     expect(workflow).toContain("|| true");
-    expect(workflow).toContain("github.ref_name != 'v0.4.2'");
+    expect(workflow).toContain("github.ref_name != 'v0.4.4'");
     expect(workflow).toContain("视频剧情标注-0.4.1-windows-x64-portable");
     expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.4.1_windows_x64_portable");
     expect(runtime.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);

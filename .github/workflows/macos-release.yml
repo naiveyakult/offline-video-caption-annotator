@@ -2,16 +2,16 @@ name: macOS libmpv release
 
 on:
   push:
-    tags: ["v0.4.2"]
+    tags: ["v0.4.4"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  RELEASE_TAG: v0.4.2
-  DMG_NAME: offline-video-caption-annotator_0.4.2_macos_aarch64.dmg
-  SHA_NAME: offline-video-caption-annotator_0.4.2_macos_aarch64.dmg.sha256
+  RELEASE_TAG: v0.4.4
+  DMG_NAME: offline-video-caption-annotator_0.4.4_macos_aarch64.dmg
+  SHA_NAME: offline-video-caption-annotator_0.4.4_macos_aarch64.dmg.sha256
 
 jobs:
   build-macos:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: v0.4.2
+          ref: v0.4.4
 
       - uses: actions/setup-node@v4
         with:
@@ -79,7 +79,7 @@ jobs:
           set -euo pipefail
 
           app_path="src-tauri/target/release/bundle/macos/视频剧情标注.app"
-          built_dmg_path="src-tauri/target/release/bundle/dmg/视频剧情标注_0.4.2_aarch64.dmg"
+          built_dmg_path="src-tauri/target/release/bundle/dmg/视频剧情标注_0.4.4_aarch64.dmg"
           binary_path="${app_path}/Contents/MacOS/offline-video-annotator"
           libmpv_path="${app_path}/Contents/Frameworks/libmpv.2.dylib"
 
@@ -89,7 +89,7 @@ jobs:
           test -f "${app_path}/Contents/Resources/libmpv-runtime.json"
           test -f "${app_path}/Contents/Resources/licenses/mpv-LGPL-2.1.txt"
           test -f "${app_path}/Contents/Resources/licenses/FFmpeg-LGPL-2.1.txt"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")" = "0.4.2"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")" = "0.4.4"
           test "$(lipo -archs "${binary_path}")" = "arm64"
           test "$(lipo -archs "${libmpv_path}")" = "arm64"
           test "$(otool -D "${libmpv_path}" | tail -1)" = "@rpath/libmpv.2.dylib"
@@ -110,7 +110,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: offline-video-caption-annotator-0.4.2-macos-aarch64
+          name: offline-video-caption-annotator-0.4.4-macos-aarch64
           path: release-assets/*
           retention-days: 7
           compression-level: 0
@@ -123,7 +123,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: offline-video-caption-annotator-0.4.2-macos-aarch64
+          name: offline-video-caption-annotator-0.4.4-macos-aarch64
           path: release-assets
 
       - name: Publish macOS libmpv release assets

@@ -1,6 +1,6 @@
 [package]
 name = "offline-video-annotator"
-version = "0.4.2"
+version = "0.4.4"
 description = "Offline video narrative annotation tool"
 authors = ["Video Annotation Team"]
 edition = "2021"

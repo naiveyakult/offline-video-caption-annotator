@@ -8,14 +8,14 @@ function read(relativePath: string): string {
   return readFileSync(resolve(root, relativePath), "utf8");
 }
 
-describe("macOS v0.4.2 libmpv release contract", () => {
+describe("macOS v0.4.4 libmpv release contract", () => {
   it("builds the release source and its pinned patched LGPL libmpv runtime", () => {
     const workflow = read(".github/workflows/macos-release.yml");
     const buildScript = read("scripts/macos/build-libmpv.sh");
 
     expect(workflow).toContain("macos-14");
-    expect(workflow).toContain('tags: ["v0.4.2"]');
-    expect(workflow).toContain("ref: v0.4.2");
+    expect(workflow).toContain('tags: ["v0.4.4"]');
+    expect(workflow).toContain("ref: v0.4.4");
     expect(workflow).toContain("scripts/macos/build-libmpv.sh");
     expect(workflow).toContain("scripts/macos/libmpv-runtime.json");
     expect(workflow).toContain("scripts/macos/patches/mpv-0.41.0-coreaudio-utils.patch");
@@ -39,8 +39,8 @@ describe("macOS v0.4.2 libmpv release contract", () => {
     const workflow = read(".github/workflows/macos-release.yml");
     const readme = read("README.md");
 
-    expect(workflow).toContain("offline-video-caption-annotator_0.4.2_macos_aarch64.dmg");
-    expect(workflow).toContain("offline-video-caption-annotator_0.4.2_macos_aarch64.dmg.sha256");
+    expect(workflow).toContain("offline-video-caption-annotator_0.4.4_macos_aarch64.dmg");
+    expect(workflow).toContain("offline-video-caption-annotator_0.4.4_macos_aarch64.dmg.sha256");
     expect(workflow).toContain("hdiutil verify");
     expect(workflow).toContain("otool -L");
     expect(workflow).toContain("Contents/Frameworks/libmpv.2.dylib");
@@ -51,12 +51,12 @@ describe("macOS v0.4.2 libmpv release contract", () => {
     expect(workflow).toContain("gh release upload");
     expect(workflow).toContain("gh release create");
     expect(workflow).toContain("|| true");
-    expect(workflow).toContain("RELEASE_TAG: v0.4.2");
+    expect(workflow).toContain("RELEASE_TAG: v0.4.4");
     expect(workflow).not.toContain("--prerelease");
     expect(workflow).toContain('gh release upload "${RELEASE_TAG}"');
     expect(workflow).toContain("--clobber");
     expect(workflow).not.toContain("windows_x64_portable");
-    expect(readme).toContain("offline-video-caption-annotator_0.4.2_macos_aarch64.dmg");
+    expect(readme).toContain("offline-video-caption-annotator_0.4.4_macos_aarch64.dmg");
     expect(read("THIRD_PARTY_NOTICES.txt")).toContain("mpv 0.41.0");
   });
 
@@ -64,7 +64,7 @@ describe("macOS v0.4.2 libmpv release contract", () => {
     const workflow = read(".github/workflows/macos-release.yml");
 
     expect(workflow).toContain("workflow_dispatch:");
-    expect(workflow).toContain('tags: ["v0.4.2"]');
+    expect(workflow).toContain('tags: ["v0.4.4"]');
     expect(workflow).not.toContain("branches: [main]");
   });
 
