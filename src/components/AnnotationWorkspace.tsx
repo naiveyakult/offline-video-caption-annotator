@@ -105,7 +105,6 @@ export function AnnotationWorkspace({
 }: AnnotationWorkspaceProps) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [activeUnitId, setActiveUnitId] = useState<string>();
-  const [segmentEnd, setSegmentEnd] = useState<number>();
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
   const [mpvMode, setMpvMode] = useState<"probing" | "starting" | "active" | "fallback">("probing");
@@ -123,10 +122,10 @@ export function AnnotationWorkspace({
   const [videoFocus, setVideoFocus] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mpvSurfaceRef = useRef<HTMLDivElement>(null);
-  const programmaticSeekRef = useRef(false);
   const mpvGenerationRef = useRef(0);
   const lastReportedPositionRef = useRef(Number.NaN);
   const lastMpvPausedRef = useRef(true);
+  const lastMpvBoundsRef = useRef<ReturnType<typeof elementBounds> | undefined>(undefined);
   const resumePositionRef = useRef(task.videoPosition);
 
   useEffect(() => {
@@ -176,22 +175,37 @@ export function AnnotationWorkspace({
     const surface = mpvSurfaceRef.current;
     if (!surface) return;
     let active = true;
-    const syncBounds = () => void mpvClient.setBounds(elementBounds(surface)).catch((error) => {
-      if (!active) return;
-      setMpvError(error instanceof Error ? error.message : String(error));
-      setMpvMode("fallback");
-      void Promise.resolve(mpvClient.destroy()).catch(() => undefined);
-    });
+    let animationFrame: number | undefined;
+    const syncBounds = () => {
+      if (animationFrame !== undefined) return;
+      animationFrame = window.requestAnimationFrame(() => {
+        animationFrame = undefined;
+        if (!active) return;
+        const bounds = elementBounds(surface);
+        const previous = lastMpvBoundsRef.current;
+        if (previous
+          && previous.x === bounds.x
+          && previous.y === bounds.y
+          && previous.width === bounds.width
+          && previous.height === bounds.height) return;
+        lastMpvBoundsRef.current = bounds;
+        void mpvClient.setBounds(bounds).catch((error) => {
+          if (!active) return;
+          setMpvError(error instanceof Error ? error.message : String(error));
+          setMpvMode("fallback");
+          void Promise.resolve(mpvClient.destroy()).catch(() => undefined);
+        });
+      });
+    };
     syncBounds();
     const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(syncBounds);
     observer?.observe(surface);
     window.addEventListener("resize", syncBounds);
-    window.addEventListener("scroll", syncBounds, true);
     return () => {
       active = false;
+      if (animationFrame !== undefined) window.cancelAnimationFrame(animationFrame);
       observer?.disconnect();
       window.removeEventListener("resize", syncBounds);
-      window.removeEventListener("scroll", syncBounds, true);
     };
   }, [mpvClient, mpvMode, videoFocus]);
 
@@ -228,13 +242,6 @@ export function AnnotationWorkspace({
       window.clearInterval(timer);
     };
   }, [mpvClient, mpvMode, onVideoPosition]);
-
-  useEffect(() => {
-    if (mpvMode === "active" && segmentEnd !== undefined && mpvState.currentTime >= segmentEnd) {
-      void mpvClient.pause();
-      setSegmentEnd(undefined);
-    }
-  }, [mpvClient, mpvMode, mpvState.currentTime, segmentEnd]);
 
   useEffect(() => {
     if (mpvMode !== "active" || !isTauri()) return;
@@ -286,30 +293,25 @@ export function AnnotationWorkspace({
     onThemeChange?.(nextTheme);
   };
 
-  const playUnit = (unit: AnnotationUnit) => {
+  const selectUnit = (unit: AnnotationUnit) => {
     setActiveUnitId(unit.id);
     onUnitChange?.(unit.id);
-    if (!unit.startTime || !unit.endTime) return;
-    programmaticSeekRef.current = true;
+    if (!unit.startTime) return;
     const start = timeToSeconds(unit.startTime);
     resumePositionRef.current = start;
+    lastReportedPositionRef.current = start;
+    setVideoCurrentTime(start);
+    onVideoPosition(start);
     if (mpvMode === "active") {
-      setVideoCurrentTime(start);
-      setSegmentEnd(timeToSeconds(unit.endTime));
-      void mpvClient.seek(start).then(() => mpvClient.play());
+      void mpvClient.seek(start);
       return;
     }
     if (!videoRef.current) return;
     videoRef.current.currentTime = start;
-    setVideoCurrentTime(start);
-    setSegmentEnd(timeToSeconds(unit.endTime));
-    void videoRef.current.play();
   };
 
   const seekFreely = (position: number) => {
     const next = Math.max(0, Math.min(position, videoDuration || 0));
-    setSegmentEnd(undefined);
-    programmaticSeekRef.current = false;
     resumePositionRef.current = next;
     if (mpvMode === "active") {
       void mpvClient.seek(next);
@@ -323,6 +325,21 @@ export function AnnotationWorkspace({
     video.currentTime = next;
     setVideoCurrentTime(next);
     onVideoPosition(next);
+  };
+
+  const replayVideo = () => {
+    resumePositionRef.current = 0;
+    lastReportedPositionRef.current = 0;
+    setVideoCurrentTime(0);
+    onVideoPosition(0);
+    if (mpvMode === "active") {
+      void mpvClient.seek(0).then(() => mpvClient.play());
+      return;
+    }
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = 0;
+    void video.play();
   };
 
   const commitAndAdvance = (
@@ -391,25 +408,16 @@ export function AnnotationWorkspace({
               onLoadedMetadata={(event) => {
                 const duration = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0;
                 setVideoDuration(duration);
-                programmaticSeekRef.current = true;
                 const restored = Math.min(resumePositionRef.current, duration || 0);
                 event.currentTarget.currentTime = restored;
                 setVideoCurrentTime(restored);
               }}
               onDurationChange={(event) => setVideoDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
-              onSeeking={() => {
-                if (!programmaticSeekRef.current) setSegmentEnd(undefined);
-              }}
-              onSeeked={() => { programmaticSeekRef.current = false; }}
               onTimeUpdate={(event) => {
                 const current = event.currentTarget.currentTime;
                 setVideoCurrentTime(current);
                 resumePositionRef.current = current;
                 onVideoPosition(current);
-                if (segmentEnd !== undefined && current >= segmentEnd) {
-                  event.currentTarget.pause();
-                  setSegmentEnd(undefined);
-                }
               }}
             />}
             {(mpvMode === "probing" || mpvMode === "starting") && <span className="mpv-loading">libmpv 正在准备视频…</span>}
@@ -470,12 +478,11 @@ export function AnnotationWorkspace({
             <span>{task.videoPath.split("/").pop()}</span>
             <span>可拖动进度条自由定位 · 原视频不会被修改</span>
           </div>
-          {activeUnitId && units.find((unit) => unit.id === activeUnitId)?.startTime && (
-            <button className="secondary-button replay-button" onClick={() => {
-              const unit = units.find((item) => item.id === activeUnitId);
-              if (unit) playUnit(unit);
-            }}><RotateCcw size={16} /> 重播当前片段</button>
-          )}
+          <button
+            className="secondary-button replay-button"
+            disabled={mpvMode === "active" ? !mpvState.ready || !videoDuration : !videoDuration}
+            onClick={replayVideo}
+          ><RotateCcw size={16} /> 重播视频</button>
         </aside>
 
         <section className="annotation-pane">
@@ -498,7 +505,7 @@ export function AnnotationWorkspace({
                 active={unit.id === activeUnitId}
                 record={task.records[unit.id]}
                 draft={task.drafts[unit.id]}
-                onSelect={() => playUnit(unit)}
+                onSelect={() => selectUnit(unit)}
                 onCommit={commitAndAdvance}
                 onDraft={onDraft}
               />
@@ -622,7 +629,6 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
             </span>
           )}
         </span>
-        {unit.startTime && <button className="segment-play" onClick={onSelect} aria-label={`播放 ${unit.title}`}><Play size={15} /> 播放片段</button>}
       </div>
 
       {editingFalse && (

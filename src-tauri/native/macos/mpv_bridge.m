@@ -365,7 +365,9 @@ bool ova_mpv_set_bounds(void *opaque, ova_mpv_bounds bounds, char *error, size_t
     ova_mpv_player *player = opaque;
     if (!player || !player->view.superview) { write_error(error, error_size, "libmpv 视图不可用"); return false; }
     void (^update)(void) = ^{
-        player->view.frame = native_frame(player->view.superview, bounds);
+        NSRect frame = native_frame(player->view.superview, bounds);
+        if (NSEqualRects(player->view.frame, frame)) return;
+        player->view.frame = frame;
         [player->view update];
         [player->view renderFrame];
     };
