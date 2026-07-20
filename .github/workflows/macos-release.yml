@@ -1,17 +1,17 @@
-name: macOS libmpv preview
+name: macOS libmpv release
 
 on:
   push:
-    tags: ["v0.4.2-mpv-preview.1"]
+    tags: ["v0.4.2"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  RELEASE_TAG: v0.4.2-mpv-preview.1
-  DMG_NAME: 视频剧情标注_0.4.2-mpv-preview.1_aarch64.dmg
-  SHA_NAME: 视频剧情标注_0.4.2-mpv-preview.1_aarch64.dmg.sha256
+  RELEASE_TAG: v0.4.2
+  DMG_NAME: offline-video-caption-annotator_0.4.2_macos_aarch64.dmg
+  SHA_NAME: offline-video-caption-annotator_0.4.2_macos_aarch64.dmg.sha256
 
 jobs:
   build-macos:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: v0.4.2-mpv-preview.1
+          ref: v0.4.2
 
       - uses: actions/setup-node@v4
         with:
@@ -38,11 +38,12 @@ jobs:
           path: |
             ~/Library/Caches/offline-video-caption-annotator/libmpv-build/downloads
             ~/Library/Caches/offline-video-caption-annotator/libmpv-build/prefix
-          key: macos-libmpv-${{ hashFiles('scripts/macos/libmpv-runtime.json', 'scripts/macos/build-libmpv.sh') }}
+          key: macos-libmpv-${{ hashFiles('scripts/macos/libmpv-runtime.json', 'scripts/macos/build-libmpv.sh', 'scripts/macos/check-libmpv-dlopen.py', 'scripts/macos/patches/mpv-0.41.0-coreaudio-utils.patch') }}
 
       - name: Build pinned LGPL libmpv runtime
         run: |
           test -f scripts/macos/libmpv-runtime.json
+          test -f scripts/macos/patches/mpv-0.41.0-coreaudio-utils.patch
           scripts/macos/build-libmpv.sh
 
       - name: Smoke-test synthetic AAC PCE audio
@@ -51,7 +52,7 @@ jobs:
           "$ffmpeg" -hide_banner -loglevel warning -y \
             -f lavfi -i 'sine=frequency=880:sample_rate=48000:duration=2' \
             -filter_complex '[0:a]pan=6.1|FL=c0|FR=c0|FC=c0|LFE=c0|BC=c0|SL=c0|SR=c0[a]' \
-            -map '[a]' -c:a aac -b:a 192k "$RUNNER_TEMP/aac-pce.mp4"
+            -map '[a]' -c:a aac -aac_pce 1 -b:a 192k "$RUNNER_TEMP/aac-pce.mp4"
           MPV_SMOKE_AO=null scripts/macos/smoke-libmpv.sh "$RUNNER_TEMP/aac-pce.mp4"
 
       - name: Test frontend
@@ -92,6 +93,8 @@ jobs:
           test "$(lipo -archs "${binary_path}")" = "arm64"
           test "$(lipo -archs "${libmpv_path}")" = "arm64"
           test "$(otool -D "${libmpv_path}" | tail -1)" = "@rpath/libmpv.2.dylib"
+          ! nm -u "${libmpv_path}" | grep -E '_cfstr_(from|get)_cstr'
+          scripts/macos/check-libmpv-dlopen.py "${libmpv_path}"
           otool -L "${libmpv_path}"
           ! otool -L "${libmpv_path}" | grep -E '/opt/homebrew|/usr/local'
           codesign --verify --deep --strict --verbose=2 "${app_path}"
@@ -107,7 +110,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: 视频剧情标注-0.4.2-mpv-preview.1-macos-aarch64
+          name: offline-video-caption-annotator-0.4.2-macos-aarch64
           path: release-assets/*
           retention-days: 7
           compression-level: 0
@@ -120,17 +123,17 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: 视频剧情标注-0.4.2-mpv-preview.1-macos-aarch64
+          name: offline-video-caption-annotator-0.4.2-macos-aarch64
           path: release-assets
 
-      - name: Publish macOS libmpv prerelease assets
+      - name: Publish macOS libmpv release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           test -f "release-assets/${DMG_NAME}"
           test -f "release-assets/${SHA_NAME}"
           if ! gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release create "${RELEASE_TAG}" --prerelease --generate-notes --title "视频剧情标注 ${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" || true
+            gh release create "${RELEASE_TAG}" --generate-notes --title "视频剧情标注 ${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" || true
           fi
           gh release upload "${RELEASE_TAG}" \
             "release-assets/${DMG_NAME}" \

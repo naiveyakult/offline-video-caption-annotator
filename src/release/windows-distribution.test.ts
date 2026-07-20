@@ -77,7 +77,7 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("gh release upload");
     expect(workflow).toContain("gh release create");
     expect(workflow).toContain("|| true");
-    expect(workflow).toContain("!contains(github.ref_name, '-mpv-preview.')");
+    expect(workflow).toContain("github.ref_name != 'v0.4.2'");
     expect(workflow).toContain("视频剧情标注-0.4.1-windows-x64-portable");
     expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.4.1_windows_x64_portable");
     expect(runtime.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);

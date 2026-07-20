@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.ref_type != 'tag' || !contains(github.ref_name, '-mpv-preview.') }}
+    if: ${{ github.ref_type != 'tag' || (github.ref_name != 'v0.4.2' && !contains(github.ref_name, '-mpv-preview.')) }}
     runs-on: windows-2022
     timeout-minutes: 90
     env:

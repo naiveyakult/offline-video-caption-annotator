@@ -1,0 +1,14 @@
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -834,4 +834,9 @@
+ endif
+-
++# CoreAudio and AVFoundation use the CoreFoundation string helpers even when
++# the full Cocoa/Swift application backend is intentionally disabled.
++if darwin and not features['cocoa'] and (features['audiounit'] or features['coreaudio'] or features['avfoundation'])
++    sources += files('osdep/utils-mac.c')
++endif
++
+ if features['audiounit'] or features['coreaudio'] or features['avfoundation']
+     sources += files('audio/out/ao_coreaudio_chmap.c',

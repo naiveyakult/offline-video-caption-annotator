@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MANIFEST="${ROOT_DIR}/scripts/macos/libmpv-runtime.json"
+MPV_PATCH="${ROOT_DIR}/scripts/macos/patches/mpv-0.41.0-coreaudio-utils.patch"
+DLOPEN_CHECK="${ROOT_DIR}/scripts/macos/check-libmpv-dlopen.py"
 # Keep the dependency prefix on an ASCII-only path. pkgconf output is consumed by
 # Meson as UTF-8, while absolute paths containing CJK characters can be emitted in
 # the active macOS locale encoding and make Meson's Python process fail to decode.
@@ -61,6 +63,15 @@ for source in json.load(open(sys.argv[1], encoding="utf-8"))["sources"]:
     print(source["name"], source["version"], source["url"], source["sha256"], sep="\t")
 PY
 )
+
+if patch --directory="${SOURCES}/mpv" --strip=1 --forward --dry-run < "${MPV_PATCH}" >/dev/null 2>&1; then
+  patch --directory="${SOURCES}/mpv" --strip=1 --forward < "${MPV_PATCH}"
+elif patch --directory="${SOURCES}/mpv" --strip=1 --reverse --dry-run < "${MPV_PATCH}" >/dev/null 2>&1; then
+  echo "mpv CoreAudio helper patch already applied"
+else
+  echo "mpv CoreAudio helper patch does not apply cleanly" >&2
+  exit 1
+fi
 
 build_meson() {
   local name="$1"
@@ -148,6 +159,12 @@ if [[ -z "${runtime}" ]]; then
 fi
 cp "${runtime}" "${OUTPUT_DIR}/libmpv.2.dylib"
 install_name_tool -id '@rpath/libmpv.2.dylib' "${OUTPUT_DIR}/libmpv.2.dylib"
+
+if nm -u "${OUTPUT_DIR}/libmpv.2.dylib" | grep -Eq '_cfstr_(from|get)_cstr'; then
+  echo "libmpv still contains unresolved CoreFoundation string helpers" >&2
+  exit 1
+fi
+python3 "${DLOPEN_CHECK}" "${OUTPUT_DIR}/libmpv.2.dylib"
 
 unexpected="$(otool -L "${OUTPUT_DIR}/libmpv.2.dylib" | awk 'NR > 1 {print $1}' | grep -Ev '^(@rpath/libmpv\.2\.dylib|/System/Library/|/usr/lib/)' || true)"
 if [[ -n "${unexpected}" ]]; then

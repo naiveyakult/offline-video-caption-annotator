@@ -122,20 +122,44 @@ static void *open_library(char *error, size_t error_size) {
     if (override && override[0]) {
         void *library = dlopen(override, RTLD_NOW | RTLD_LOCAL);
         if (library) return library;
+        const char *detail = dlerror();
+        char message[768];
+        snprintf(message, sizeof(message), "LIBMPV_PATH 加载失败：%s", detail ? detail : "unknown dlopen error");
+        write_error(error, error_size, message);
+        return NULL;
     }
 
     NSString *frameworks = NSBundle.mainBundle.privateFrameworksPath;
-    NSArray<NSString *> *names = @[@"libmpv.2.dylib", @"libmpv.dylib"];
-    if (frameworks) {
-        for (NSString *name in names) {
-            NSString *path = [frameworks stringByAppendingPathComponent:name];
-            void *library = dlopen(path.fileSystemRepresentation, RTLD_NOW | RTLD_LOCAL);
-            if (library) return library;
-        }
+    if (!frameworks) {
+        write_error(error, error_size, "无法定位应用的 Frameworks 目录");
+        return NULL;
     }
-    const char *detail = dlerror();
+
+    NSFileManager *files = NSFileManager.defaultManager;
+    NSString *versioned = [frameworks stringByAppendingPathComponent:@"libmpv.2.dylib"];
+    if ([files fileExistsAtPath:versioned]) {
+        void *library = dlopen(versioned.fileSystemRepresentation, RTLD_NOW | RTLD_LOCAL);
+        if (library) return library;
+        const char *detail = dlerror();
+        char message[768];
+        snprintf(message, sizeof(message), "libmpv.2.dylib 加载失败：%s", detail ? detail : "unknown dlopen error");
+        write_error(error, error_size, message);
+        return NULL;
+    }
+
+    NSString *alias = [frameworks stringByAppendingPathComponent:@"libmpv.dylib"];
+    if ([files fileExistsAtPath:alias]) {
+        void *library = dlopen(alias.fileSystemRepresentation, RTLD_NOW | RTLD_LOCAL);
+        if (library) return library;
+        const char *detail = dlerror();
+        char message[768];
+        snprintf(message, sizeof(message), "libmpv.dylib 加载失败：%s", detail ? detail : "unknown dlopen error");
+        write_error(error, error_size, message);
+        return NULL;
+    }
+
     char message[768];
-    snprintf(message, sizeof(message), "无法加载内置 libmpv：%s", detail ? detail : "dynamic library not found");
+    snprintf(message, sizeof(message), "内置 libmpv 文件不存在：%s", versioned.fileSystemRepresentation);
     write_error(error, error_size, message);
     return NULL;
 }

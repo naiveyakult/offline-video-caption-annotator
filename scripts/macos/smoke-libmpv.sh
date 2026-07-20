@@ -12,6 +12,7 @@ if [[ $# -ne 1 ]]; then
 fi
 test -f "${RUNTIME}"
 test -f "${WORK_DIR}/prefix/include/mpv/client.h"
+python3 "${ROOT_DIR}/scripts/macos/check-libmpv-dlopen.py" "${RUNTIME}"
 
 xcrun clang -std=c11 -Wall -Wextra -Werror \
   -I"${WORK_DIR}/prefix/include" \
