@@ -10,7 +10,7 @@ import {
   Settings,
 } from "lucide-react";
 import { buildAnnotationUnits } from "../domain/annotation";
-import type { ProjectSnapshot, ProjectTask, TaskStatus } from "../domain/types";
+import type { MediaScanProgress, ProjectSnapshot, ProjectTask, TaskStatus } from "../domain/types";
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
   not_started: "未开始",
@@ -23,6 +23,7 @@ export function ProjectDashboard({
   project,
   annotatorId,
   loading,
+  scanProgress,
   onOpenProject,
   onOpenTask,
   onExport,
@@ -31,6 +32,7 @@ export function ProjectDashboard({
   project?: ProjectSnapshot;
   annotatorId: string;
   loading: boolean;
+  scanProgress?: MediaScanProgress;
   onOpenProject: () => void;
   onOpenTask: (taskId: string) => void;
   onExport: () => void;
@@ -72,7 +74,7 @@ export function ProjectDashboard({
           <div className="hero-actions">
             <button className="secondary-button" onClick={onOpenProject} disabled={loading}>
               {loading ? <LoaderCircle className="spin" size={18} /> : <FolderOpen size={18} />}
-              {project ? "切换项目" : "打开项目"}
+              {scanProgress ? `正在检测音轨 ${scanProgress.current}/${scanProgress.total}` : project ? "切换项目" : "打开项目"}
             </button>
             {project && <button className="primary-button" onClick={onExport}><Download size={18} /> 导出当前结果</button>}
           </div>
@@ -131,7 +133,7 @@ function TaskRow({ task, onOpen }: { task: ProjectTask; onOpen: () => void }) {
       <div className="task-file-icon"><FileVideo size={21} /></div>
       <div className="task-name"><strong>{task.id}</strong><span>{task.videoPath.split("/").pop() || "缺少视频"}</span></div>
       {task.status === "invalid" ? (
-        <div className="task-error"><AlertTriangle size={16} /> {task.error}</div>
+        <div className="task-error"><AlertTriangle size={16} /> {task.mediaAnomaly?.message ?? task.error}</div>
       ) : (
         <div className="task-progress"><div><span style={{ width: `${percent}%` }} /></div><small>{completed}/{total} 单元</small></div>
       )}

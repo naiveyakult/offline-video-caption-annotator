@@ -3,7 +3,7 @@ name: Windows portable
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v0.5.0"]
   pull_request:
   workflow_dispatch:
 
@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   build:
-    if: ${{ github.ref_type != 'tag' || (github.ref_name != 'v0.4.4' && !contains(github.ref_name, '-mpv-preview.')) }}
     runs-on: windows-2022
     timeout-minutes: 90
     env:
@@ -82,7 +81,7 @@ jobs:
       - name: Smoke test portable executable
         shell: pwsh
         run: |
-          $exePath = (Resolve-Path "artifacts/视频剧情标注_0.4.1_windows_x64_portable/视频剧情标注.exe").Path
+          $exePath = (Resolve-Path "artifacts/视频剧情标注_0.5.0_windows_x64_portable/视频剧情标注.exe").Path
           $workingDirectory = Split-Path -Parent $exePath
           $process = Start-Process -FilePath $exePath -WorkingDirectory $workingDirectory -PassThru
           Start-Sleep -Seconds 10
@@ -91,7 +90,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: 视频剧情标注-0.4.1-windows-x64-portable
+          name: 视频剧情标注-0.5.0-windows-x64-portable
           path: |
             artifacts/*.zip
             artifacts/*.sha256
@@ -107,7 +106,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: 视频剧情标注-0.4.1-windows-x64-portable
+          name: 视频剧情标注-0.5.0-windows-x64-portable
           path: release-assets
       - name: Publish GitHub Release
         env:

@@ -5,6 +5,11 @@ This application is built with Tauri, React, Rust and other open-source
 dependencies. Their license metadata is available in package-lock.json and
 src-tauri/Cargo.lock.
 
+The application uses mp4parse 0.17.0 to inspect MP4 container metadata without
+invoking an external FFmpeg executable. mp4parse is licensed under the Mozilla
+Public License 2.0:
+https://github.com/mozilla/mp4parse-rust
+
 The Windows portable archive redistributes Microsoft Edge WebView2 Fixed
 Version Runtime. WebView2 is licensed by Microsoft under the terms presented
 with the official WebView2 download and distribution documentation:

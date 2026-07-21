@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -31,10 +32,10 @@ describe("Windows portable distribution contract", () => {
       };
     };
 
-    expect(packageJson.version).toBe("0.4.4");
+    expect(packageJson.version).toBe("0.5.0");
     expect(shared.version).toBe(packageJson.version);
-    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.4.4"');
-    expect(read("scripts/windows/使用说明.txt")).toContain("0.4.1");
+    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.5.0"');
+    expect(read("scripts/windows/使用说明.txt")).toContain("0.5.0");
     expect(shared.app.security.assetProtocol.scope).toEqual([]);
     expect(mac.bundle.targets).toEqual(["dmg", "app"]);
     expect(mac.bundle.macOS.minimumSystemVersion).toBe("13.0");
@@ -54,6 +55,15 @@ describe("Windows portable distribution contract", () => {
     expect(launcher).toContain("WebView2FixedRuntime");
     expect(launcher).toContain("视频剧情标注.exe");
     expect(launcher).toMatch(/UNC|网络/);
+  });
+
+  it("ships the distinctive green dual-track v0.5 desktop icon on both platforms", () => {
+    const icon = readFileSync(resolve(root, "src-tauri/icons/icon.png"));
+    const digest = createHash("sha256").update(icon).digest("hex");
+
+    expect(digest).toBe("3df62297801582c1a4ebfd2ca40a66e5c0403ea598d82bb2aeab426799542f14");
+    expect(readFileSync(resolve(root, "src-tauri/icons/icon.ico")).byteLength).toBeGreaterThan(10_000);
+    expect(readFileSync(resolve(root, "src-tauri/icons/icon.icns")).byteLength).toBeGreaterThan(10_000);
   });
 
   it("builds and publishes a pinned Windows x64 portable artifact", () => {
@@ -77,9 +87,9 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("gh release upload");
     expect(workflow).toContain("gh release create");
     expect(workflow).toContain("|| true");
-    expect(workflow).toContain("github.ref_name != 'v0.4.4'");
-    expect(workflow).toContain("视频剧情标注-0.4.1-windows-x64-portable");
-    expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.4.1_windows_x64_portable");
+    expect(workflow).toContain('tags: ["v0.5.0"]');
+    expect(workflow).toContain("视频剧情标注-0.5.0-windows-x64-portable");
+    expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.5.0_windows_x64_portable");
     expect(runtime.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     expect(runtime.architecture).toBe("x64");
     expect(runtime.url).toMatch(/^https:\/\/.*microsoft\.com\//);
@@ -100,5 +110,7 @@ describe("Windows portable distribution contract", () => {
     expect(readme).toContain("media-batch/");
     expect(readme).toContain("仅为全部单元已完成判定的任务生成结果文件");
     expect(readme).toContain(".annotation-workspace");
+    expect(readme).toContain("多音轨");
+    expect(read("THIRD_PARTY_NOTICES.txt")).toContain("mp4parse 0.17.0");
   });
 });

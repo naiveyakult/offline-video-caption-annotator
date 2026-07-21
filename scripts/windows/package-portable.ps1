@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $outputRoot = Join-Path $repositoryRoot $OutputDirectory
-$packageName = "视频剧情标注_0.4.1_windows_x64_portable"
+$packageName = "视频剧情标注_0.5.0_windows_x64_portable"
 $stageDirectory = Join-Path $outputRoot $packageName
 $zipPath = Join-Path $outputRoot "$packageName.zip"
 $checksumPath = "$zipPath.sha256"

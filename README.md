@@ -11,6 +11,8 @@
 - SQLite 自动保存任务、草稿、当前单元和视频位置，异常退出后可恢复。
 - 原始 MP4 和 JSONL 永不修改，支持部分或完整导出。
 - 仅为全部单元已完成判定的任务生成结果文件；未开始、进行中和异常任务只保留在 manifest 状态清单中。
+- 打开项目时自动检测 MP4 音轨；多音轨视频及音轨检测失败的任务标记为异常，不进入标注或导出。
+- v0.5.0 保留原有深绿色简洁风格，桌面图标内部改为双音轨波形，用于和旧版播放三角图标区分。
 - 全程离线，不依赖服务器、Docker 或中心数据库。
 
 ## 项目目录
@@ -33,11 +35,13 @@ annotation-project/
 exports/<timestamp>/
 ```
 
+音轨检测结果同样缓存在 `session.sqlite` 中，并按视频路径、大小和修改时间自动失效。多音轨任务会保留已有判定和草稿；视频替换为单音轨后，重新打开项目即可继续原进度。
+
 每个 JSONL 非空行必须是独立 JSON 对象，包含字符串 `video_path`、`caption_en` 和 `caption_zh`。Caption 必须使用应用支持的四个固定中英章节标题与字段映射。
 
 ## Windows 免安装版
 
-从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.4.1_windows_x64_portable.zip`：
+从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.5.0_windows_x64_portable.zip`：
 
 1. 将 ZIP 完整解压到本机磁盘。
 2. 双击 `启动视频剧情标注.cmd`，不要单独移动或启动 EXE。
@@ -49,9 +53,9 @@ Windows 便携包由 `.github/workflows/windows-portable.yml` 在 `windows-2022`
 
 ## macOS Apple 芯片 libmpv 正式版
 
-为解决部分 AAC/PCE 音轨在 WKWebView 中没有声音的问题，macOS 版内嵌 libmpv，并使用 FFmpeg 解码音频。`v0.4.4` 进一步减少标注列表滚动时的原生播放器边界更新，并将底部操作统一为从头重播完整视频。Windows 继续使用原播放器和 v0.4.1 便携包。
+为解决部分 AAC/PCE 音轨在 WKWebView 中没有声音的问题，macOS 版内嵌 libmpv，并使用 FFmpeg 解码音频。`v0.5.0` 保留 v0.4.4 的 macOS 播放改进，并与 Windows 版统一加入多音轨异常检测。Windows 继续使用系统播放器。
 
-从 GitHub Releases 下载 `offline-video-caption-annotator_0.4.4_macos_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。该版本使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
+从 GitHub Releases 下载 `offline-video-caption-annotator_0.5.0_macos_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。该版本使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
 
 macOS 标注页提供播放/暂停、音量、静音、时间轴、时间显示、视频专注模式和从头重播完整视频等自定义控件。libmpv 初始化或加载失败时会自动回退到系统播放器并显示原因，也可以点击“重试 libmpv”。
 

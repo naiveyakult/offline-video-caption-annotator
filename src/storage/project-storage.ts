@@ -1,4 +1,5 @@
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   applyAnnotations,
   buildAnnotationUnits,
@@ -8,12 +9,14 @@ import {
 import type {
   AnnotationRecord,
   ExportResult,
+  MediaAnomaly,
+  MediaScanProgress,
   ProjectSnapshot,
   ProjectTask,
 } from "../domain/types";
 
 export interface ProjectStorage {
-  openProject(rootPath: string): Promise<ProjectSnapshot>;
+  openProject(rootPath: string, onProgress?: (progress: MediaScanProgress) => void): Promise<ProjectSnapshot>;
   saveProject(snapshot: ProjectSnapshot): Promise<void>;
   exportProject(snapshot: ProjectSnapshot, annotatorId: string): Promise<ExportResult>;
 }
@@ -25,6 +28,11 @@ interface NativeTask {
   json_content?: string;
   source_sha256?: string;
   error?: string;
+  media_anomaly?: {
+    code: MediaAnomaly["code"];
+    message: string;
+    audio_track_count?: number;
+  };
 }
 
 interface NativeProject {
@@ -43,8 +51,8 @@ interface ExportTaskPayload {
   export_status: "partial" | "complete";
 }
 
-function recordsStatus(task: Pick<ProjectTask, "document" | "records" | "drafts" | "error">): ProjectTask["status"] {
-  if (task.error || !task.document) return "invalid";
+function recordsStatus(task: Pick<ProjectTask, "document" | "records" | "drafts" | "error" | "mediaAnomaly">): ProjectTask["status"] {
+  if (task.error || task.mediaAnomaly || !task.document) return "invalid";
   const total = buildAnnotationUnits(task.document).length;
   const completed = Object.keys(task.records).length;
   if (completed === 0 && Object.keys(task.drafts).length === 0) return "not_started";
@@ -89,6 +97,11 @@ function parseNativeTask(task: NativeTask): ProjectTask {
   }
   try {
     const document = parseVideoDocument(task.json_content);
+    const mediaAnomaly = task.media_anomaly ? {
+      code: task.media_anomaly.code,
+      message: task.media_anomaly.message,
+      audioTrackCount: task.media_anomaly.audio_track_count,
+    } : undefined;
     return {
       id: task.id,
       jsonPath: task.json_path,
@@ -96,7 +109,8 @@ function parseNativeTask(task: NativeTask): ProjectTask {
       videoUrl: convertFileSrc(task.video_path),
       sourceSha256: task.source_sha256,
       document,
-      status: "not_started",
+      mediaAnomaly,
+      status: mediaAnomaly ? "invalid" : "not_started",
       records: {},
       drafts: {},
       videoPosition: 0,
@@ -122,7 +136,7 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
   const evaluatedTasks = snapshot.tasks.map((task) => ({ task, status: recordsStatus(task) }));
   const validResults = evaluatedTasks
     .filter((entry): entry is { task: ProjectTask & { document: NonNullable<ProjectTask["document"]> }; status: "complete" } =>
-      entry.status === "complete" && Boolean(entry.task.document && !entry.task.error))
+      entry.status === "complete" && Boolean(entry.task.document && !entry.task.error && !entry.task.mediaAnomaly))
     .map(({ task }) => {
       const meta = createAnnotationMeta(
         task.id,
@@ -165,7 +179,7 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
     { total: 0, pending: 0, true: 0, false: 0, question: 0, other: 0 },
   );
   const manifest = {
-    schema_version: "2.2",
+    schema_version: "2.3",
     project_name: snapshot.name,
     annotator_id: annotatorId,
     export_status: overallStatus,
@@ -199,11 +213,15 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
             export_status: "skipped",
             source_json: task.jsonPath.split(/[\\/]/).pop() || null,
             source_video: task.videoPath.split(/[\\/]/).pop() || null,
+            ...(task.mediaAnomaly ? {
+              anomaly_code: task.mediaAnomaly.code,
+              audio_track_count: task.mediaAnomaly.audioTrackCount ?? null,
+            } : {}),
             skipped_reason: status === "not_started"
               ? "任务尚未开始"
               : status === "in_progress"
                 ? "任务尚未完成"
-                : `任务异常：${task.error ?? "任务无有效数据"}`,
+                : `任务异常：${task.mediaAnomaly?.message ?? task.error ?? "任务无有效数据"}`,
           };
     }),
   };
@@ -211,19 +229,31 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
 }
 
 export class TauriProjectStorage implements ProjectStorage {
-  async openProject(rootPath: string): Promise<ProjectSnapshot> {
-    const native = await invoke<NativeProject>("open_project", { rootPath });
-    const saved = native.session_json ? (JSON.parse(native.session_json) as ProjectSnapshot) : undefined;
-    const tasks = mergeSavedState(native.tasks.map(parseNativeTask), saved);
-    return {
-      rootPath: native.root_path,
-      name: native.name,
-      tasks,
-      activeTaskId: saved?.activeTaskId,
-      activeTheme: saved?.activeTheme ?? "overview",
-      activeUnitId: saved?.activeUnitId,
-      updatedAt: new Date().toISOString(),
-    };
+  async openProject(rootPath: string, onProgress?: (progress: MediaScanProgress) => void): Promise<ProjectSnapshot> {
+    const unlisten = await listen<{ current: number; total: number; cache_hits: number }>(
+      "media-scan-progress",
+      ({ payload }) => onProgress?.({ current: payload.current, total: payload.total, cacheHits: payload.cache_hits }),
+    );
+    try {
+      const native = await invoke<NativeProject>("open_project", { rootPath });
+      const saved = native.session_json ? (JSON.parse(native.session_json) as ProjectSnapshot) : undefined;
+      const tasks = mergeSavedState(native.tasks.map(parseNativeTask), saved);
+      const activeTaskId = saved?.activeTaskId && tasks.some((task) =>
+        task.id === saved.activeTaskId && task.status !== "invalid")
+        ? saved.activeTaskId
+        : undefined;
+      return {
+        rootPath: native.root_path,
+        name: native.name,
+        tasks,
+        activeTaskId,
+        activeTheme: saved?.activeTheme ?? "overview",
+        activeUnitId: activeTaskId ? saved?.activeUnitId : undefined,
+        updatedAt: new Date().toISOString(),
+      };
+    } finally {
+      unlisten();
+    }
   }
 
   async saveProject(snapshot: ProjectSnapshot): Promise<void> {
@@ -278,11 +308,13 @@ function download(name: string, content: string) {
 export class BrowserProjectStorage implements ProjectStorage {
   private files: File[] = [];
 
+  constructor(private readonly inspectAudioTracks?: (file: File) => Promise<number>) {}
+
   async openProject(): Promise<ProjectSnapshot> {
     throw new Error("浏览器预览请通过文件夹选择器导入项目");
   }
 
-  async openFiles(fileList: FileList): Promise<ProjectSnapshot> {
+  async openFiles(fileList: FileList, onProgress?: (progress: MediaScanProgress) => void): Promise<ProjectSnapshot> {
     this.files = [...fileList];
     const relative = this.files.find((file) => file.webkitRelativePath)?.webkitRelativePath;
     const name = relative?.split("/")[0] || "浏览器预览项目";
@@ -379,6 +411,7 @@ export class BrowserProjectStorage implements ProjectStorage {
     }
     const duplicateIndexes = new Map<string, number>();
     const tasks: ProjectTask[] = [];
+    const cacheHits = 0;
     for (const row of pendingRows) {
       let id = row.stem || `${row.jsonlName.replace(/\.jsonl$/, "")}.line-${row.lineNumber}`;
       if (row.videoPath && row.stem && (stemCounts.get(row.stem) ?? 0) > 1) {
@@ -409,6 +442,24 @@ export class BrowserProjectStorage implements ProjectStorage {
         }
       }
       const video = !error ? matches[0] : undefined;
+      let mediaAnomaly: MediaAnomaly | undefined;
+      if (video && this.inspectAudioTracks) {
+        try {
+          const count = await this.inspectAudioTracks(video);
+          if (count > 1) {
+            mediaAnomaly = {
+              code: "multiple_audio_tracks",
+              message: `多音轨视频（检测到 ${count} 条音频轨道）`,
+              audioTrackCount: count,
+            };
+          }
+        } catch (cause) {
+          mediaAnomaly = {
+            code: "audio_track_detection_failed",
+            message: `音轨检测失败：${cause instanceof Error ? cause.message : String(cause)}`,
+          };
+        }
+      }
       tasks.push({
         id,
         jsonPath: row.jsonlName,
@@ -417,22 +468,29 @@ export class BrowserProjectStorage implements ProjectStorage {
         sourceSha256: row.sourceSha256,
         document,
         error,
-        status: error ? "invalid" : "not_started",
+        mediaAnomaly,
+        status: error || mediaAnomaly ? "invalid" : "not_started",
         records: {},
         drafts: {},
         videoPosition: 0,
       });
+      onProgress?.({ current: tasks.length, total: pendingRows.length, cacheHits });
     }
     const storageKey = `video-annotator:${name}`;
     const savedRaw = localStorage.getItem(storageKey);
     const saved = savedRaw ? (JSON.parse(savedRaw) as ProjectSnapshot) : undefined;
+    const mergedTasks = mergeSavedState(tasks, saved);
+    const activeTaskId = saved?.activeTaskId && mergedTasks.some((task) =>
+      task.id === saved.activeTaskId && task.status !== "invalid")
+      ? saved.activeTaskId
+      : undefined;
     return {
       rootPath: `browser://${name}`,
       name,
-      tasks: mergeSavedState(tasks, saved),
-      activeTaskId: saved?.activeTaskId,
+      tasks: mergedTasks,
+      activeTaskId,
       activeTheme: saved?.activeTheme ?? "overview",
-      activeUnitId: saved?.activeUnitId,
+      activeUnitId: activeTaskId ? saved?.activeUnitId : undefined,
       updatedAt: new Date().toISOString(),
     };
   }
