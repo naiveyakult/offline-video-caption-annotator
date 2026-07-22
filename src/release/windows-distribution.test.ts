@@ -54,7 +54,9 @@ describe("Windows portable distribution contract", () => {
   });
 
   it("keeps the v0.4.1 annotation workspace and player UI unchanged", () => {
-    const digest = (path: string) => createHash("sha256").update(readFileSync(resolve(root, path))).digest("hex");
+    const digest = (path: string) => createHash("sha256")
+      .update(readFileSync(resolve(root, path), "utf8").replaceAll("\r\n", "\n"))
+      .digest("hex");
 
     expect(digest("src/components/AnnotationWorkspace.tsx")).toBe(
       "9de6bbcef23b820e2076c67ed76ff6588fcb2830e95f06ad3657a3e5fe5a5aaf",
