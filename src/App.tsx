@@ -11,6 +11,7 @@ import {
   type ProjectStorage,
 } from "./storage/project-storage";
 import { formatExportSuccess } from "./export-message";
+import type { MediaScanProgress } from "./domain/types";
 
 export default function App() {
   const annotatorId = useAppStore((state) => state.annotatorId);
@@ -30,6 +31,7 @@ export default function App() {
   const setActiveUnit = useAppStore((state) => state.setActiveUnit);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [scanProgress, setScanProgress] = useState<MediaScanProgress>();
   const [toast, setToast] = useState<string>();
   const storageRef = useRef<ProjectStorage>(createProjectStorage());
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,12 +61,14 @@ export default function App() {
     const path = await open({ directory: true, multiple: false, title: "选择标注项目文件夹" });
     if (!path) return;
     setLoading(true);
+    setScanProgress(undefined);
     try {
-      setProject(await storageRef.current.openProject(path));
+      setProject(await storageRef.current.openProject(path, setScanProgress));
     } catch (error) {
       setToast(`打开项目失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setLoading(false);
+      setScanProgress(undefined);
     }
   };
 
@@ -73,11 +77,12 @@ export default function App() {
     setLoading(true);
     try {
       const browserStorage = storageRef.current as BrowserProjectStorage;
-      setProject(await browserStorage.openFiles(files));
+      setProject(await browserStorage.openFiles(files, setScanProgress));
     } catch (error) {
       setToast(`打开项目失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setLoading(false);
+      setScanProgress(undefined);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -93,7 +98,7 @@ export default function App() {
   };
 
   const activeTask = project?.tasks.find((task) => task.id === activeTaskId);
-  const validTasks = project?.tasks.filter((task) => task.document) ?? [];
+  const validTasks = project?.tasks.filter((task) => task.document && !task.error && !task.mediaAnomaly) ?? [];
   const activeTaskIndex = validTasks.findIndex((task) => task.id === activeTaskId);
   const previousTask = activeTaskIndex > 0 ? validTasks[activeTaskIndex - 1] : undefined;
   const nextTask = activeTaskIndex >= 0 && activeTaskIndex < validTasks.length - 1
@@ -142,6 +147,7 @@ export default function App() {
           project={project}
           annotatorId={annotatorId}
           loading={loading}
+          scanProgress={scanProgress}
           onOpenProject={() => void openProject()}
           onOpenTask={openTask}
           onExport={() => void exportProject()}

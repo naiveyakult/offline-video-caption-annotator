@@ -2,8 +2,8 @@ name: Windows portable
 
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
+    branches: ["codex/windows-v0.4.5"]
+    tags: ["v0.4.5"]
   pull_request:
   workflow_dispatch:
 
@@ -81,7 +81,7 @@ jobs:
       - name: Smoke test portable executable
         shell: pwsh
         run: |
-          $exePath = (Resolve-Path "artifacts/视频剧情标注_0.4.1_windows_x64_portable/视频剧情标注.exe").Path
+          $exePath = (Resolve-Path "artifacts/视频剧情标注_0.4.5_windows_x64_portable/视频剧情标注.exe").Path
           $workingDirectory = Split-Path -Parent $exePath
           $process = Start-Process -FilePath $exePath -WorkingDirectory $workingDirectory -PassThru
           Start-Sleep -Seconds 10
@@ -90,7 +90,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: 视频剧情标注-0.4.1-windows-x64-portable
+          name: 视频剧情标注-0.4.5-windows-x64-portable
           path: |
             artifacts/*.zip
             artifacts/*.sha256
@@ -106,13 +106,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: 视频剧情标注-0.4.1-windows-x64-portable
+          name: 视频剧情标注-0.4.5-windows-x64-portable
           path: release-assets
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release create "${GITHUB_REF_NAME}" --generate-notes --title "视频剧情标注 ${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" || true
+            gh release create "${GITHUB_REF_NAME}" --title "视频剧情标注 ${GITHUB_REF_NAME}（Windows）" --notes "基于 v0.4.1，仅新增多音轨自动异常检测。macOS 请继续使用 v0.4.4。" --repo "${GITHUB_REPOSITORY}" || true
           fi
           gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber --repo "${GITHUB_REPOSITORY}"
+          gh release edit "${GITHUB_REF_NAME}" --latest --repo "${GITHUB_REPOSITORY}"

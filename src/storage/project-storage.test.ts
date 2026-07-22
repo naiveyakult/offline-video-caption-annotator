@@ -276,7 +276,58 @@ describe("BrowserProjectStorage JSONL import", () => {
     expect(restored.tasks[0]!.videoPosition).toBe(12.34);
   });
 
-  it("exports only completed tasks and keeps every task in the schema 2.2 manifest", async () => {
+  it("preserves saved annotations while a task has a media anomaly and restores them after it clears", async () => {
+    let audioTracks = 1;
+    const storage = new BrowserProjectStorage(async () => audioTracks);
+    const files = [
+      projectFile(
+        "scenes_restore_final_caption_zh.jsonl",
+        captionRow("clips/1.mp4"),
+        "restore-batch/scenes_restore_final_caption_zh.jsonl",
+        "application/x-ndjson",
+      ),
+      projectFile("1.mp4", "video", "restore-batch/clips/1.mp4", "video/mp4"),
+    ] as unknown as FileList;
+    const first = await storage.openFiles(files);
+    first.tasks[0]!.records = {
+      "overview.overall_visual_style": {
+        unitId: "overview.overall_visual_style",
+        decision: "true",
+        correctedFields: {},
+        updatedAt: "2026-07-22T00:00:00.000Z",
+      },
+    };
+    first.tasks[0]!.drafts = {
+      "speech_transcript.0": {
+        unitId: "speech_transcript.0",
+        decision: "false",
+        fields: { content: "saved draft" },
+        updatedAt: "2026-07-22T00:00:01.000Z",
+      },
+    };
+    first.tasks[0]!.videoPosition = 8.5;
+    await storage.saveProject(first);
+
+    audioTracks = 2;
+    const abnormal = await storage.openFiles(files);
+    expect(abnormal.tasks[0]).toMatchObject({
+      status: "invalid",
+      mediaAnomaly: { code: "multiple_audio_tracks", audioTrackCount: 2 },
+      videoPosition: 8.5,
+    });
+    expect(abnormal.tasks[0]!.records["overview.overall_visual_style"]?.decision).toBe("true");
+    expect(abnormal.tasks[0]!.drafts["speech_transcript.0"]?.fields.content).toBe("saved draft");
+    await storage.saveProject(abnormal);
+
+    audioTracks = 1;
+    const restored = await storage.openFiles(files);
+    expect(restored.tasks[0]!.status).toBe("in_progress");
+    expect(restored.tasks[0]!.mediaAnomaly).toBeUndefined();
+    expect(restored.tasks[0]!.records["overview.overall_visual_style"]?.decision).toBe("true");
+    expect(restored.tasks[0]!.drafts["speech_transcript.0"]?.fields.content).toBe("saved draft");
+  });
+
+  it("exports only completed tasks and keeps every task in the schema 2.3 manifest", async () => {
     const storage = new BrowserProjectStorage();
     const rows = [
       captionRow("clips/complete.mp4"),
@@ -336,7 +387,7 @@ describe("BrowserProjectStorage JSONL import", () => {
       };
       expect(meta.schema_version).toBe("2.2");
       expect(meta.export_status).toBe("complete");
-      expect(manifest.schema_version).toBe("2.2");
+      expect(manifest.schema_version).toBe("2.3");
       expect(manifest.export_status).toBe("partial");
       expect(manifest.task_counts).toEqual({
         total: 4,
@@ -361,6 +412,52 @@ describe("BrowserProjectStorage JSONL import", () => {
         { task_id: "pending", task_status: "not_started", export_status: "skipped", skipped_reason: "任务尚未开始" },
         { task_id: "missing", task_status: "invalid", export_status: "skipped" },
       ]);
+    } finally {
+      createObjectUrl.mockRestore();
+      click.mockRestore();
+    }
+  });
+
+  it("records media anomaly details in the manifest and skips its task files", async () => {
+    const storage = new BrowserProjectStorage(async () => 2);
+    const files = [
+      projectFile(
+        "scenes_multi_final_caption_zh.jsonl",
+        captionRow("clips/multi.mp4"),
+        "multi-batch/scenes_multi_final_caption_zh.jsonl",
+        "application/x-ndjson",
+      ),
+      projectFile("multi.mp4", "video", "multi-batch/clips/multi.mp4", "video/mp4"),
+    ] as unknown as FileList;
+    const project = await storage.openFiles(files);
+    const abnormal = project.tasks[0]!;
+    expect(abnormal.document).toBeDefined();
+    expect(abnormal.status).toBe("invalid");
+    expect(abnormal.error).toBeUndefined();
+
+    const healthy = completeTask({
+      ...abnormal,
+      id: "healthy",
+      videoPath: "clips/healthy.mp4",
+      mediaAnomaly: undefined,
+      status: "not_started",
+    });
+    const blobs: Blob[] = [];
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      blobs.push(blob as Blob);
+      return `blob:export-${blobs.length}`;
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    try {
+      await storage.exportProject({ ...project, tasks: [healthy, abnormal] }, "A023");
+      const manifest = JSON.parse(await readBlob(blobs.at(-1)!)) as { tasks: Array<Record<string, unknown>> };
+      expect(manifest.tasks[1]).toMatchObject({
+        task_status: "invalid",
+        export_status: "skipped",
+        anomaly_code: "multiple_audio_tracks",
+        audio_track_count: 2,
+        skipped_reason: "任务异常：多音轨视频（检测到 2 条音频轨道）",
+      });
     } finally {
       createObjectUrl.mockRestore();
       click.mockRestore();

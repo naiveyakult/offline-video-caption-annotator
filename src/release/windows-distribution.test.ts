@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -31,10 +32,10 @@ describe("Windows portable distribution contract", () => {
       };
     };
 
-    expect(packageJson.version).toBe("0.4.1");
+    expect(packageJson.version).toBe("0.4.5");
     expect(shared.version).toBe(packageJson.version);
-    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.4.1"');
-    expect(read("scripts/windows/使用说明.txt")).toContain("0.4.1");
+    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.4.5"');
+    expect(read("scripts/windows/使用说明.txt")).toContain("0.4.5");
     expect(shared.app.security.assetProtocol.scope).toEqual([]);
     expect(mac.bundle.targets).toEqual(["dmg", "app"]);
     expect(mac.bundle.macOS.minimumSystemVersion).toBe("13.0");
@@ -43,6 +44,26 @@ describe("Windows portable distribution contract", () => {
       type: "fixedRuntime",
       path: "./WebView2FixedRuntime",
     });
+  });
+
+  it("keeps the original v0.4.1 green play icon", () => {
+    const icon = readFileSync(resolve(root, "src-tauri/icons/icon.png"));
+    expect(createHash("sha256").update(icon).digest("hex")).toBe(
+      "b214a987651170f02a9573a352a2c42a52e71ff9c832071f58b11afdb50e135c",
+    );
+  });
+
+  it("keeps the v0.4.1 annotation workspace and player UI unchanged", () => {
+    const digest = (path: string) => createHash("sha256").update(readFileSync(resolve(root, path))).digest("hex");
+
+    expect(digest("src/components/AnnotationWorkspace.tsx")).toBe(
+      "9de6bbcef23b820e2076c67ed76ff6588fcb2830e95f06ad3657a3e5fe5a5aaf",
+    );
+    expect(digest("src/styles.css")).toBe(
+      "73b35cba1148d945d9f3d58d26efa1c160613a3376d4260036eb3db5ec2d0d4d",
+    );
+    expect(existsSync(resolve(root, "src/media/mpv-client.ts"))).toBe(false);
+    expect(existsSync(resolve(root, "src-tauri/src/mpv.rs"))).toBe(false);
   });
 
   it("ships a no-admin launcher with WebView2 ACL and location guards", () => {
@@ -77,8 +98,10 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("gh release upload");
     expect(workflow).toContain("gh release create");
     expect(workflow).toContain("|| true");
-    expect(workflow).toContain("视频剧情标注-0.4.1-windows-x64-portable");
-    expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.4.1_windows_x64_portable");
+    expect(workflow).toContain('branches: ["codex/windows-v0.4.5"]');
+    expect(workflow).toContain('tags: ["v0.4.5"]');
+    expect(workflow).toContain("视频剧情标注-0.4.5-windows-x64-portable");
+    expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.4.5_windows_x64_portable");
     expect(runtime.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     expect(runtime.architecture).toBe("x64");
     expect(runtime.url).toMatch(/^https:\/\/.*microsoft\.com\//);
@@ -99,5 +122,8 @@ describe("Windows portable distribution contract", () => {
     expect(readme).toContain("media-batch/");
     expect(readme).toContain("仅为全部单元已完成判定的任务生成结果文件");
     expect(readme).toContain(".annotation-workspace");
+    expect(readme).toContain("基于 v0.4.1");
+    expect(readme).toContain("多音轨");
+    expect(read("THIRD_PARTY_NOTICES.txt")).toContain("mp4parse 0.17.0");
   });
 });

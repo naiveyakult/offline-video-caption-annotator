@@ -63,6 +63,20 @@ export interface AnnotationMeta {
 
 export type TaskStatus = "not_started" | "in_progress" | "complete" | "invalid";
 
+export type MediaAnomalyCode = "multiple_audio_tracks" | "audio_track_detection_failed";
+
+export interface MediaAnomaly {
+  code: MediaAnomalyCode;
+  message: string;
+  audioTrackCount?: number;
+}
+
+export interface MediaScanProgress {
+  current: number;
+  total: number;
+  cacheHits: number;
+}
+
 export interface ProjectTask {
   id: string;
   jsonPath: string;
@@ -71,6 +85,7 @@ export interface ProjectTask {
   sourceSha256: string;
   document?: VideoDocument;
   error?: string;
+  mediaAnomaly?: MediaAnomaly;
   status: TaskStatus;
   records: Record<string, AnnotationRecord>;
   drafts: Record<string, DraftRecord>;

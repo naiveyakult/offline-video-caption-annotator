@@ -11,6 +11,7 @@
 - SQLite 自动保存任务、草稿、当前单元和视频位置，异常退出后可恢复。
 - 原始 MP4 和 JSONL 永不修改，支持部分或完整导出。
 - 仅为全部单元已完成判定的任务生成结果文件；未开始、进行中和异常任务只保留在 manifest 状态清单中。
+- Windows v0.4.5 基于 v0.4.1，仅新增 MP4 音轨自动检测；多音轨及检测失败任务会标记为异常并跳过导出。
 - 全程离线，不依赖服务器、Docker 或中心数据库。
 
 ## 项目目录
@@ -37,7 +38,7 @@ exports/<timestamp>/
 
 ## Windows 免安装版
 
-从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.4.1_windows_x64_portable.zip`：
+从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.4.5_windows_x64_portable.zip`：
 
 1. 将 ZIP 完整解压到本机磁盘。
 2. 双击 `启动视频剧情标注.cmd`，不要单独移动或启动 EXE。
@@ -45,11 +46,13 @@ exports/<timestamp>/
 
 便携包不支持 UNC 或网络共享位置。当前版本未进行商业代码签名，Windows 可能显示 SmartScreen 提示。WebView2 缓存保存在 `%LOCALAPPDATA%`，标注数据仍只写入你选择的项目目录。
 
-Windows 便携包由 `.github/workflows/windows-portable.yml` 在 `windows-2022` 构建。普通提交生成保留 7 天的 Artifact；推送 `v*` 标签会创建公开 GitHub Release。
+Windows 便携包由 `.github/workflows/windows-portable.yml` 在 `windows-2022` 构建。维护分支提交生成保留 7 天的 Artifact；推送 `v0.4.5` 标签会创建公开 GitHub Release。
 
 ## macOS Apple 芯片版
 
-从 GitHub Releases 下载 `视频剧情标注_0.4.1_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。当前构建使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
+macOS 不发布 v0.4.5，请继续使用 v0.4.4。Windows v0.4.5 维护分支不包含后续 macOS 播放器改造；历史 v0.4.1 安装包 `视频剧情标注_0.4.1_aarch64.dmg` 不会重新构建或覆盖。
+
+音轨检测结果缓存在项目的 `.annotation-workspace/session.sqlite` 中，并按视频相对路径、大小和修改时间自动失效。多音轨任务会保留已有判定、草稿和视频位置；替换为单音轨视频后，重新打开项目即可继续原进度。
 
 升级软件不会清空标注进度。重新打开原项目目录时，应用会继续读取 `.annotation-workspace` 中的判定、False 草稿、当前单元和视频位置；进行中的任务完成后，下一次导出才会生成其结果文件。
 

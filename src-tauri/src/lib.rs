@@ -7,8 +7,13 @@ use std::{
     fs,
     io::Write,
     path::{Component, Path, PathBuf},
+    time::UNIX_EPOCH,
 };
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+
+mod media;
+
+use media::inspect_audio_track_count;
 
 const WORKSPACE_DIR: &str = ".annotation-workspace";
 const DATABASE_FILE: &str = "session.sqlite";
@@ -21,6 +26,21 @@ struct NativeTask {
     json_content: Option<String>,
     source_sha256: Option<String>,
     error: Option<String>,
+    media_anomaly: Option<NativeMediaAnomaly>,
+}
+
+#[derive(Debug, Serialize)]
+struct NativeMediaAnomaly {
+    code: String,
+    message: String,
+    audio_track_count: Option<usize>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct MediaScanProgress {
+    current: usize,
+    total: usize,
+    cache_hits: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,6 +137,14 @@ fn open_database(root: &Path) -> Result<Connection, String> {
                key TEXT PRIMARY KEY,
                value TEXT NOT NULL,
                updated_at TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS media_probe_cache (
+               video_path TEXT PRIMARY KEY,
+               file_size INTEGER NOT NULL,
+               modified_ns TEXT NOT NULL,
+               audio_track_count INTEGER,
+               error_message TEXT,
+               updated_at TEXT NOT NULL
              );",
         )
         .map_err(|error| format!("无法初始化本地 SQLite：{error}"))?;
@@ -195,7 +223,81 @@ fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
     }
 }
 
-fn open_project_from_path(root_path: String) -> Result<NativeProject, String> {
+fn inspect_media_cached<F>(
+    connection: &Connection,
+    relative_path: &str,
+    path: &Path,
+    inspector: &mut F,
+) -> Result<(Result<usize, String>, bool), String>
+where
+    F: FnMut(&Path) -> Result<usize, String>,
+{
+    let metadata = fs::metadata(path).map_err(|error| format!("无法读取视频信息：{error}"))?;
+    let file_size = i64::try_from(metadata.len()).map_err(|_| "视频文件过大".to_string())?;
+    let modified_ns = metadata
+        .modified()
+        .map_err(|error| format!("无法读取视频修改时间：{error}"))?
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "视频修改时间早于 Unix 纪元".to_string())?
+        .as_nanos()
+        .to_string();
+
+    let cached = connection.query_row(
+        "SELECT audio_track_count, error_message FROM media_probe_cache
+         WHERE video_path = ?1 AND file_size = ?2 AND modified_ns = ?3",
+        params![relative_path, file_size, modified_ns],
+        |row| {
+            Ok((
+                row.get::<_, Option<i64>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+            ))
+        },
+    );
+    match cached {
+        Ok((Some(count), None)) => return Ok((Ok(count.max(0) as usize), true)),
+        Ok((_, Some(error))) => return Ok((Err(error), true)),
+        Ok((None, None)) | Err(rusqlite::Error::QueryReturnedNoRows) => {}
+        Err(error) => return Err(format!("无法读取音轨检测缓存：{error}")),
+    }
+
+    let result = inspector(path);
+    let (count, error) = match &result {
+        Ok(count) => (Some(*count as i64), None),
+        Err(error) => (None, Some(error.as_str())),
+    };
+    connection
+        .execute(
+            "INSERT INTO media_probe_cache
+             (video_path, file_size, modified_ns, audio_track_count, error_message, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(video_path) DO UPDATE SET
+               file_size = excluded.file_size,
+               modified_ns = excluded.modified_ns,
+               audio_track_count = excluded.audio_track_count,
+               error_message = excluded.error_message,
+               updated_at = excluded.updated_at",
+            params![
+                relative_path,
+                file_size,
+                modified_ns,
+                count,
+                error,
+                Local::now().to_rfc3339()
+            ],
+        )
+        .map_err(|error| format!("无法保存音轨检测缓存：{error}"))?;
+    Ok((result, false))
+}
+
+fn open_project_from_path_with_inspector<F, P>(
+    root_path: String,
+    inspector: &mut F,
+    mut on_progress: P,
+) -> Result<NativeProject, String>
+where
+    F: FnMut(&Path) -> Result<usize, String>,
+    P: FnMut(MediaScanProgress),
+{
     let root = PathBuf::from(&root_path);
     if !root.is_dir() {
         return Err("所选路径不是有效文件夹".to_string());
@@ -296,9 +398,12 @@ fn open_project_from_path(root_path: String) -> Result<NativeProject, String> {
         }
     }
 
+    let connection = open_database(&canonical)?;
+    let total = rows.len();
+    let mut cache_hits = 0;
     let mut duplicate_indexes: HashMap<String, usize> = HashMap::new();
     let mut tasks = Vec::with_capacity(rows.len());
-    for row in rows {
+    for (index, row) in rows.into_iter().enumerate() {
         let fallback_id = format!(
             "{}.line-{}",
             row.jsonl_name.trim_end_matches(".jsonl"),
@@ -345,6 +450,37 @@ fn open_project_from_path(root_path: String) -> Result<NativeProject, String> {
             }
         }
 
+        let mut media_anomaly = None;
+        if error.is_none() {
+            if let Some(relative_video_path) = &row.video_path {
+                let (inspection, cache_hit) = match inspect_media_cached(
+                    &connection,
+                    relative_video_path,
+                    &resolved_video,
+                    inspector,
+                ) {
+                    Ok(result) => result,
+                    Err(message) => (Err(message), false),
+                };
+                if cache_hit {
+                    cache_hits += 1;
+                }
+                media_anomaly = match inspection {
+                    Ok(count) if count > 1 => Some(NativeMediaAnomaly {
+                        code: "multiple_audio_tracks".to_string(),
+                        message: format!("多音轨视频（检测到 {count} 条音频轨道）"),
+                        audio_track_count: Some(count),
+                    }),
+                    Ok(_) => None,
+                    Err(message) => Some(NativeMediaAnomaly {
+                        code: "audio_track_detection_failed".to_string(),
+                        message: format!("音轨检测失败：{message}"),
+                        audio_track_count: None,
+                    }),
+                };
+            }
+        }
+
         tasks.push(NativeTask {
             id,
             json_path: path_string(&row.jsonl_path),
@@ -352,6 +488,12 @@ fn open_project_from_path(root_path: String) -> Result<NativeProject, String> {
             json_content: row.line,
             source_sha256: Some(row.source_sha256),
             error,
+            media_anomaly,
+        });
+        on_progress(MediaScanProgress {
+            current: index + 1,
+            total,
+            cache_hits,
         });
     }
 
@@ -367,9 +509,25 @@ fn open_project_from_path(root_path: String) -> Result<NativeProject, String> {
     })
 }
 
+#[cfg(test)]
+fn open_project_from_path(root_path: String) -> Result<NativeProject, String> {
+    open_project_from_path_with_inspector(root_path, &mut inspect_audio_track_count, |_| {})
+}
+
 #[tauri::command]
-fn open_project(app: tauri::AppHandle, root_path: String) -> Result<NativeProject, String> {
-    let project = open_project_from_path(root_path)?;
+async fn open_project(app: tauri::AppHandle, root_path: String) -> Result<NativeProject, String> {
+    let progress_app = app.clone();
+    let project = tauri::async_runtime::spawn_blocking(move || {
+        open_project_from_path_with_inspector(
+            root_path,
+            &mut inspect_audio_track_count,
+            move |progress| {
+                let _ = progress_app.emit("media-scan-progress", progress);
+            },
+        )
+    })
+    .await
+    .map_err(|error| format!("音轨检测任务意外终止：{error}"))??;
     app.asset_protocol_scope()
         .allow_directory(PathBuf::from(&project.root_path), true)
         .map_err(|error| format!("无法授权访问项目视频目录：{error}"))?;
@@ -636,5 +794,151 @@ mod tests {
             .error
             .as_deref()
             .is_some_and(|error| error.contains("路径越界")));
+    }
+
+    fn mp4_box(name: &[u8; 4], content: Vec<u8>) -> Vec<u8> {
+        let mut result = Vec::with_capacity(content.len() + 8);
+        result.extend_from_slice(&((content.len() + 8) as u32).to_be_bytes());
+        result.extend_from_slice(name);
+        result.extend_from_slice(&content);
+        result
+    }
+
+    fn synthetic_mp4(audio_tracks: usize) -> Vec<u8> {
+        let mut moov = Vec::new();
+        for _ in 0..audio_tracks {
+            let mut handler = vec![0; 8];
+            handler.extend_from_slice(b"soun");
+            handler.extend_from_slice(&[0; 13]);
+            let mdia = mp4_box(b"mdia", mp4_box(b"hdlr", handler));
+            moov.extend_from_slice(&mp4_box(b"trak", mdia));
+        }
+        mp4_box(b"moov", moov)
+    }
+
+    #[test]
+    fn counts_zero_one_and_multiple_audio_tracks_from_mp4_metadata() {
+        let project = TestProject::new("audio-count");
+        for count in 0..=3 {
+            let relative = format!("{count}.mp4");
+            project.write(&relative, &synthetic_mp4(count));
+            assert_eq!(
+                inspect_audio_track_count(&project.path().join(relative)).expect("inspect MP4"),
+                count
+            );
+        }
+    }
+
+    #[test]
+    fn locates_moov_metadata_after_a_large_media_data_box() {
+        let project = TestProject::new("moov-after-mdat");
+        let mut content = mp4_box(b"mdat", vec![0; 1024 * 1024]);
+        content.extend_from_slice(&synthetic_mp4(2));
+        project.write("late-moov.mp4", &content);
+
+        assert_eq!(
+            inspect_audio_track_count(&project.path().join("late-moov.mp4")).expect("inspect MP4"),
+            2
+        );
+    }
+
+    #[test]
+    fn marks_multiple_tracks_and_probe_failures_as_media_anomalies() {
+        let project = TestProject::new("audio-anomaly");
+        project.write(
+            "scenes_batch_final_caption_zh.jsonl",
+            b"{\"video_path\":\"clips/multi.mp4\"}\n{\"video_path\":\"clips/broken.mp4\"}",
+        );
+        project.write("clips/multi.mp4", &synthetic_mp4(2));
+        project.write("clips/broken.mp4", b"not-an-mp4");
+
+        let opened = open_project_from_path(path_string(project.path())).expect("open project");
+
+        assert!(opened.tasks[0].error.is_none());
+        assert_eq!(
+            opened.tasks[0]
+                .media_anomaly
+                .as_ref()
+                .map(|value| value.code.as_str()),
+            Some("multiple_audio_tracks")
+        );
+        assert_eq!(
+            opened.tasks[0]
+                .media_anomaly
+                .as_ref()
+                .and_then(|value| value.audio_track_count),
+            Some(2)
+        );
+        assert_eq!(
+            opened.tasks[1]
+                .media_anomaly
+                .as_ref()
+                .map(|value| value.code.as_str()),
+            Some("audio_track_detection_failed")
+        );
+    }
+
+    #[test]
+    fn reuses_cached_audio_track_results_until_the_video_changes() {
+        let project = TestProject::new("audio-cache");
+        project.write(
+            "scenes_batch_final_caption_zh.jsonl",
+            br#"{"video_path":"clips/clip.mp4"}"#,
+        );
+        project.write("clips/clip.mp4", &synthetic_mp4(1));
+        let mut inspections = 0;
+
+        open_project_from_path_with_inspector(
+            path_string(project.path()),
+            &mut |_| {
+                inspections += 1;
+                Ok(1)
+            },
+            |_| {},
+        )
+        .expect("first open");
+        open_project_from_path_with_inspector(
+            path_string(project.path()),
+            &mut |_| {
+                inspections += 1;
+                Ok(1)
+            },
+            |_| {},
+        )
+        .expect("cached open");
+        assert_eq!(inspections, 1);
+
+        project.write("clips/clip.mp4", &synthetic_mp4(2));
+        open_project_from_path_with_inspector(
+            path_string(project.path()),
+            &mut |_| {
+                inspections += 1;
+                Ok(2)
+            },
+            |_| {},
+        )
+        .expect("changed open");
+        assert_eq!(inspections, 2);
+    }
+
+    #[test]
+    fn reports_audio_scan_progress_for_every_imported_row() {
+        let project = TestProject::new("audio-progress");
+        project.write(
+            "scenes_batch_final_caption_zh.jsonl",
+            b"{\"video_path\":\"clips/one.mp4\"}\n{\"video_path\":\"clips/two.mp4\"}",
+        );
+        project.write("clips/one.mp4", &synthetic_mp4(1));
+        project.write("clips/two.mp4", &synthetic_mp4(1));
+        let mut progress = Vec::new();
+
+        open_project_from_path_with_inspector(
+            path_string(project.path()),
+            &mut |_| Ok(1),
+            |update| progress.push((update.current, update.total)),
+        )
+        .expect("open project");
+
+        assert_eq!(progress, vec![(1, 2), (2, 2)]);
     }
 }
