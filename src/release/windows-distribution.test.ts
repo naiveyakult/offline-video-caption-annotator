@@ -96,10 +96,16 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("release:");
     expect(workflow).toContain("publish:");
     expect(workflow).toContain("inputs.publish == true");
+    expect(workflow).toContain("github.event_name == 'push'");
+    expect(workflow).toContain("[publish windows v0.6.0]");
     expect(workflow).toContain("refs/heads/codex/windows-v0.6.0");
     expect(workflow).toContain('--repo "${GITHUB_REPOSITORY}"');
     expect(workflow).toContain("gh release upload");
     expect(workflow).toContain('gh release view "${RELEASE_TAG}"');
+    expect(workflow).toContain("git ls-remote");
+    expect(workflow).toContain("macOS 基于 v0.4.4");
+    expect(workflow).toContain("Windows 基于 v0.4.5");
+    expect(workflow).toContain('gh release edit "${RELEASE_TAG}"');
     expect(workflow).not.toContain("gh release create");
     expect(workflow).toContain('branches: ["codex/windows-v0.6.0"]');
     expect(workflow).toContain("RELEASE_TAG: v0.6.0");

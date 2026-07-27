@@ -107,9 +107,14 @@ jobs:
 
   release:
     if: >-
-      github.event_name == 'workflow_dispatch' &&
-      inputs.publish == true &&
-      github.ref == 'refs/heads/codex/windows-v0.6.0'
+      github.ref == 'refs/heads/codex/windows-v0.6.0' &&
+      (
+        (
+          github.event_name == 'push' &&
+          contains(github.event.head_commit.message, '[publish windows v0.6.0]')
+        ) ||
+        (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+      )
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -124,5 +129,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null
+          macos_sha="$(git ls-remote \
+            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${RELEASE_TAG}^{}" | awk '{print $1}')"
+          test -n "${macos_sha}"
+          release_notes="$(printf '%s\n\n%s\n%s' \
+            'v0.6.0 仅保留 True / False；False 无需修订并立即结束当前视频。导出仅包含纯审计文件和批次清单，不再生成 corrected.json。' \
+            "macOS 基于 v0.4.4（libmpv），构建提交 ${macos_sha}。" \
+            "Windows 基于 v0.4.5（保留多音轨检测），构建提交 ${GITHUB_SHA}。")"
           gh release upload "${RELEASE_TAG}" release-assets/* --clobber --repo "${GITHUB_REPOSITORY}"
-          gh release edit "${RELEASE_TAG}" --latest --repo "${GITHUB_REPOSITORY}"
+          gh release edit "${RELEASE_TAG}" \
+            --title "视频剧情标注 ${RELEASE_TAG}" \
+            --notes "${release_notes}" \
+            --latest \
+            --repo "${GITHUB_REPOSITORY}"
