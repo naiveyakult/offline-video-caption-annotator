@@ -38,7 +38,6 @@ struct ExportTaskPayload {
     task_id: String,
     json_path: String,
     source_sha256: String,
-    corrected_json: String,
     annotation_meta_json: String,
     export_status: String,
 }
@@ -431,7 +430,7 @@ fn export_project(
                 task.task_id
             ));
         }
-        if task.export_status != "partial" && task.export_status != "complete" {
+        if task.export_status != "complete" {
             return Err(format!("任务 {} 的导出状态无效", task.task_id));
         }
     }
@@ -448,10 +447,6 @@ fn export_project(
 
     let write_result = (|| -> Result<(), String> {
         for task in &tasks {
-            atomic_write(
-                &temporary.join(format!("{}.corrected.json", task.task_id)),
-                task.corrected_json.as_bytes(),
-            )?;
             atomic_write(
                 &temporary.join(format!("{}.annotation_meta.json", task.task_id)),
                 task.annotation_meta_json.as_bytes(),

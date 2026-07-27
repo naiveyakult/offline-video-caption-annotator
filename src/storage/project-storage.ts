@@ -1,6 +1,5 @@
 import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 import {
-  applyAnnotations,
   buildAnnotationUnits,
   createAnnotationMeta,
   parseVideoDocument,
@@ -38,17 +37,17 @@ interface ExportTaskPayload {
   task_id: string;
   json_path: string;
   source_sha256: string;
-  corrected_json: string;
   annotation_meta_json: string;
-  export_status: "partial" | "complete";
+  export_status: "complete";
 }
 
-function recordsStatus(task: Pick<ProjectTask, "document" | "records" | "drafts" | "error">): ProjectTask["status"] {
+function recordsStatus(task: Pick<ProjectTask, "document" | "records" | "drafts" | "error" | "videoDecision">): ProjectTask["status"] {
   if (task.error || !task.document) return "invalid";
   const total = buildAnnotationUnits(task.document).length;
-  const completed = Object.keys(task.records).length;
-  if (completed === 0 && Object.keys(task.drafts).length === 0) return "not_started";
-  return completed >= total ? "complete" : "in_progress";
+  const records = Object.values(task.records);
+  if (records.length === 0) return "not_started";
+  if (task.videoDecision === "false" || records.some((record) => record.decision === "false")) return "complete";
+  return records.length >= total ? "complete" : "in_progress";
 }
 
 function mergeSavedState(tasks: ProjectTask[], saved?: ProjectSnapshot): ProjectTask[] {
@@ -56,17 +55,49 @@ function mergeSavedState(tasks: ProjectTask[], saved?: ProjectSnapshot): Project
     const previous = saved?.tasks.find((candidate) => candidate.id === task.id);
     if (!previous || previous.sourceSha256 !== task.sourceSha256) return task;
     const validUnitIds = new Set(task.document ? buildAnnotationUnits(task.document).map((unit) => unit.id) : []);
-    const records = Object.fromEntries(Object.entries(previous.records ?? {}).filter(([unitId, record]) =>
-      validUnitIds.has(unitId) && ["true", "false", "question", "other"].includes(record.decision),
-    ));
+    const units = new Map(
+      task.document
+        ? buildAnnotationUnits(task.document).map((unit) => [unit.id, unit] as const)
+        : [],
+    );
+    const records = Object.fromEntries(Object.entries(previous.records ?? {}).flatMap(([unitId, stored]) => {
+      if (!validUnitIds.has(unitId)) return [];
+      const record = stored as AnnotationRecord & { decision?: string };
+      if (record.decision === "true" || record.decision === "false") return [[unitId, record]];
+      if (record.decision !== "question" && record.decision !== "other") return [];
+      const unit = units.get(unitId);
+      if (!unit) return [];
+      const converted: AnnotationRecord = {
+        unitId,
+        decision: "false",
+        correctedFields: unit.sourceFields,
+        updatedAt: record.updatedAt,
+        legacyDecision: record.decision,
+        legacyCorrectedFields: record.correctedFields,
+      };
+      return [[unitId, converted]];
+    }));
     const drafts = Object.fromEntries(Object.entries(previous.drafts ?? {}).filter(([unitId, draft]) =>
       validUnitIds.has(unitId) && draft.decision === "false",
     ));
+    const falseRecords = Object.values(records)
+      .filter((record) => record.decision === "false")
+      .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
+    const savedStopIsValid = previous.stoppedAtUnitId &&
+      records[previous.stoppedAtUnitId]?.decision === "false";
+    const stoppedAtUnitId = savedStopIsValid
+      ? previous.stoppedAtUnitId
+      : falseRecords[0]?.unitId;
+    const allTrue = Object.keys(records).length === validUnitIds.size &&
+      Object.values(records).every((record) => record.decision === "true");
     const merged = {
       ...task,
       records,
       drafts,
       videoPosition: previous.videoPosition ?? 0,
+      videoDecision: stoppedAtUnitId ? "false" as const : allTrue ? "true" as const : undefined,
+      completionMode: stoppedAtUnitId ? "false_early_stop" as const : allTrue ? "all_units" as const : undefined,
+      stoppedAtUnitId,
     };
     return { ...merged, status: recordsStatus(merged) };
   });
@@ -131,12 +162,12 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
         task.document,
         task.records,
         exportedAt,
+        task.stoppedAtUnitId,
       );
       const payload: ExportTaskPayload = {
         task_id: task.id,
         json_path: task.jsonPath,
         source_sha256: task.sourceSha256,
-        corrected_json: JSON.stringify(applyAnnotations(task.document, task.records), null, 2),
         annotation_meta_json: JSON.stringify(meta, null, 2),
         export_status: meta.export_status,
       };
@@ -153,19 +184,20 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
     invalid: evaluatedTasks.filter(({ status }) => status === "invalid").length,
     skipped: snapshot.tasks.length - validResults.length,
   };
-  const aggregate = validResults.reduce(
+  const annotationCounts = validResults.reduce(
     (counts, { meta }) => ({
-      total: counts.total + meta.counts.total,
-      pending: counts.pending + meta.counts.pending,
+      source_total: counts.source_total + meta.counts.source_total,
+      annotated: counts.annotated + meta.counts.annotated,
       true: counts.true + meta.counts.true,
       false: counts.false + meta.counts.false,
-      question: counts.question + meta.counts.question,
-      other: counts.other + meta.counts.other,
+      unreviewed: counts.unreviewed + meta.counts.unreviewed,
     }),
-    { total: 0, pending: 0, true: 0, false: 0, question: 0, other: 0 },
+    { source_total: 0, annotated: 0, true: 0, false: 0, unreviewed: 0 },
   );
+  const trueCompleted = validResults.filter(({ meta }) => meta.video_decision === "true").length;
+  const falseCompleted = validResults.filter(({ meta }) => meta.video_decision === "false").length;
   const manifest = {
-    schema_version: "2.2",
+    schema_version: "3.0",
     project_name: snapshot.name,
     annotator_id: annotatorId,
     export_status: overallStatus,
@@ -176,10 +208,12 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
       not_started: taskCounts.notStarted,
       in_progress: taskCounts.inProgress,
       complete: taskCounts.complete,
+      true_complete: trueCompleted,
+      false_early_stop: falseCompleted,
       invalid: taskCounts.invalid,
       skipped: taskCounts.skipped,
     },
-    annotation_counts: aggregate,
+    annotation_counts: annotationCounts,
     tasks: evaluatedTasks.map(({ task, status }) => {
       const result = validResults.find((candidate) => candidate.task.id === task.id);
       return result
@@ -189,8 +223,10 @@ function buildExportPayload(snapshot: ProjectSnapshot, annotatorId: string) {
             export_status: result.payload.export_status,
             source_json: task.jsonPath.split(/[\\/]/).pop(),
             source_video: task.videoPath.split(/[\\/]/).pop(),
-            corrected_file: `${task.id}.corrected.json`,
             annotation_meta_file: `${task.id}.annotation_meta.json`,
+            video_decision: result.meta.video_decision,
+            completion_mode: result.meta.completion_mode,
+            stopped_at_unit_id: result.meta.stopped_at_unit_id,
             counts: result.meta.counts,
           }
         : {
@@ -448,7 +484,6 @@ export class BrowserProjectStorage implements ProjectStorage {
   async exportProject(snapshot: ProjectSnapshot, annotatorId: string): Promise<ExportResult> {
     const { tasks, manifest, overallStatus, taskCounts } = buildExportPayload(snapshot, annotatorId);
     tasks.forEach((task) => {
-      download(`${task.task_id}.corrected.json`, task.corrected_json);
       download(`${task.task_id}.annotation_meta.json`, task.annotation_meta_json);
     });
     download("manifest.json", JSON.stringify(manifest, null, 2));

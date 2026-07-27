@@ -4,7 +4,6 @@ import {
   buildAnnotationUnits,
   createAnnotationMeta,
   parseVideoDocument,
-  validateCorrection,
 } from "./annotation";
 import type { AnnotationRecord } from "./types";
 import { captionFixture, noSpeechFixture } from "../test/caption-fixture";
@@ -63,15 +62,7 @@ describe("bilingual caption annotation domain", () => {
     expect(() => parseVideoDocument(JSON.stringify(wrongTime))).toThrow("Storyline 第 2 条时间范围不一致");
   });
 
-  it("requires only False to change an English field", () => {
-    expect(validateCorrection("false", { description: "event" }, { description: "event" })).toBe(false);
-    expect(validateCorrection("false", { description: "event" }, { description: "fixed" })).toBe(true);
-    expect(validateCorrection("true", { description: "event" }, { description: "event" })).toBe(true);
-    expect(validateCorrection("question", { description: "event" }, { description: "event" })).toBe(true);
-    expect(validateCorrection("other", { description: "event" }, { description: "event" })).toBe(true);
-  });
-
-  it("writes only False corrections into caption_en and preserves all other source data", () => {
+  it("never rewrites Caption source data", () => {
     const document = parseVideoDocument(JSON.stringify(captionFixture));
     const records: Record<string, AnnotationRecord> = {
       "storyline.0": {
@@ -80,30 +71,16 @@ describe("bilingual caption annotation domain", () => {
         correctedFields: { description: "Alice leaves immediately." },
         updatedAt: "2026-07-14T00:00:00.000Z",
       },
-      "speech_transcript.0": {
-        unitId: "speech_transcript.0",
-        decision: "other",
-        correctedFields: {},
-        updatedAt: "2026-07-14T00:00:01.000Z",
-      },
-      "speech_transcript.1": {
-        unitId: "speech_transcript.1",
-        decision: "question",
-        correctedFields: {},
-        updatedAt: "2026-07-14T00:00:02.000Z",
-      },
     };
     const output = applyAnnotations(document, records);
 
-    expect(output.caption_en).toBe(
-      captionFixture.caption_en.replace('Alice watches Bob and says, "Wait here."', "Alice leaves immediately."),
-    );
+    expect(output.caption_en).toBe(captionFixture.caption_en);
     expect(output.caption_zh).toBe(captionFixture.caption_zh);
     expect(output._id).toBe(captionFixture._id);
     expect(output.usage).toEqual(captionFixture.usage);
   });
 
-  it("exports schema 2.2 Question decisions and excludes Chinese and Visible Text units", () => {
+  it("exports schema 3.0 with only actually reviewed units before a False stop", () => {
     const document = parseVideoDocument(JSON.stringify(noSpeechFixture));
     const meta = createAnnotationMeta("task-1", "A023", "hash", document, {
       "overview.overall_visual_style": {
@@ -114,35 +91,35 @@ describe("bilingual caption annotation domain", () => {
       },
       "overview.overall_audio_style": {
         unitId: "overview.overall_audio_style",
-        decision: "other",
+        decision: "false",
         correctedFields: {},
         updatedAt: "2026-07-14T00:00:01.000Z",
       },
       "overview.narrative_theme": {
         unitId: "overview.narrative_theme",
-        decision: "question",
+        decision: "true",
         correctedFields: {},
         updatedAt: "2026-07-14T00:00:02.000Z",
       },
-    });
+    }, "2026-07-14T00:00:03.000Z", "overview.overall_audio_style");
 
-    expect(meta.schema_version).toBe("2.2");
-    expect(meta.counts).toEqual({ total: 8, pending: 5, true: 1, false: 0, question: 1, other: 1 });
-    expect(meta.units).toHaveLength(8);
+    expect(meta.schema_version).toBe("3.0");
+    expect(meta.video_decision).toBe("false");
+    expect(meta.completion_mode).toBe("false_early_stop");
+    expect(meta.stopped_at_unit_id).toBe("overview.overall_audio_style");
+    expect(meta.counts).toEqual({ source_total: 8, annotated: 2, true: 1, false: 1, unreviewed: 6 });
+    expect(meta.units).toHaveLength(2);
     expect(meta.units.every((unit) => !("reference_fields" in unit))).toBe(true);
-    expect(meta.units.find((unit) => unit.decision === "question")).toMatchObject({
-      source_fields: { narrative_theme: "Patience and trust." },
-      corrected_fields: { narrative_theme: "Patience and trust." },
-    });
+    expect(meta.units.every((unit) => !("corrected_fields" in unit))).toBe(true);
   });
 
-  it("treats Question as completed for a fully annotated task", () => {
+  it("exports an all-True task as a completed video", () => {
     const document = parseVideoDocument(JSON.stringify(noSpeechFixture));
     const records = Object.fromEntries(buildAnnotationUnits(document).map((unit, index) => [
       unit.id,
       {
         unitId: unit.id,
-        decision: "question" as const,
+        decision: "true" as const,
         correctedFields: {},
         updatedAt: `2026-07-14T00:00:${String(index).padStart(2, "0")}.000Z`,
       },
@@ -150,6 +127,8 @@ describe("bilingual caption annotation domain", () => {
 
     const meta = createAnnotationMeta("task-1", "A023", "hash", document, records);
     expect(meta.export_status).toBe("complete");
-    expect(meta.counts).toEqual({ total: 8, pending: 0, true: 0, false: 0, question: 8, other: 0 });
+    expect(meta.video_decision).toBe("true");
+    expect(meta.completion_mode).toBe("all_units");
+    expect(meta.counts).toEqual({ source_total: 8, annotated: 8, true: 8, false: 0, unreviewed: 0 });
   });
 });

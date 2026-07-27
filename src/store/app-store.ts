@@ -3,7 +3,6 @@ import type {
   AnnotationFontSize,
   AnnotationRecord,
   Decision,
-  DraftRecord,
   ProjectSnapshot,
   Theme,
 } from "../domain/types";
@@ -23,11 +22,6 @@ interface AppState {
   commit: (
     unitId: string,
     decision: Exclude<Decision, "pending">,
-    fields: Record<string, string>,
-  ) => void;
-  saveDraft: (
-    unitId: string,
-    decision: "false",
     fields: Record<string, string>,
   ) => void;
   setVideoPosition: (position: number) => void;
@@ -70,30 +64,36 @@ export const useAppStore = create<AppState>((set) => ({
     project: state.project ? { ...state.project, activeTaskId: undefined, updatedAt: new Date().toISOString() } : undefined,
   })),
   commit: (unitId, decision, fields) => set((state) => {
+    void fields;
     if (!state.project || !state.activeTaskId) return state;
     const tasks = state.project.tasks.map((task) => {
       if (task.id !== state.activeTaskId) return task;
       const record: AnnotationRecord = {
         unitId,
         decision,
-        correctedFields: decision === "false" ? fields : {},
+        correctedFields: {},
         updatedAt: new Date().toISOString(),
       };
       const records = { ...task.records, [unitId]: record };
-      const drafts = { ...task.drafts };
-      delete drafts[unitId];
-      return updateTaskStatus({ ...task, records, drafts });
-    });
-    return { project: { ...state.project, tasks, updatedAt: new Date().toISOString() } };
-  }),
-  saveDraft: (unitId, decision, fields) => set((state) => {
-    if (!state.project || !state.activeTaskId) return state;
-    const tasks = state.project.tasks.map((task) => {
-      if (task.id !== state.activeTaskId) return task;
-      const draft: DraftRecord = { unitId, decision, fields, updatedAt: new Date().toISOString() };
-      const records = { ...task.records };
-      delete records[unitId];
-      return updateTaskStatus({ ...task, records, drafts: { ...task.drafts, [unitId]: draft } });
+      if (decision === "false") {
+        return updateTaskStatus({
+          ...task,
+          records,
+          videoDecision: "false",
+          completionMode: "false_early_stop",
+          stoppedAtUnitId: unitId,
+        });
+      }
+      const clearsEarlyStop = task.stoppedAtUnitId === unitId;
+      return updateTaskStatus({
+        ...task,
+        records,
+        ...(clearsEarlyStop ? {
+          videoDecision: undefined,
+          completionMode: undefined,
+          stoppedAtUnitId: undefined,
+        } : {}),
+      });
     });
     return { project: { ...state.project, tasks, updatedAt: new Date().toISOString() } };
   }),

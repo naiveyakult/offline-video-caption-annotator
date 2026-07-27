@@ -3,7 +3,6 @@ import type {
   AnnotationMeta,
   AnnotationRecord,
   AnnotationUnit,
-  Decision,
   Theme,
   VideoDocument,
 } from "./types";
@@ -363,36 +362,12 @@ export function buildAnnotationUnits(document: VideoDocument): AnnotationUnit[] 
   }));
 }
 
-export function validateCorrection(
-  decision: Exclude<Decision, "pending">,
-  sourceFields: Record<string, string>,
-  correctedFields: Record<string, string>,
-): boolean {
-  if (decision !== "false") return true;
-  return Object.keys(sourceFields).some((key) => (correctedFields[key] ?? "") !== (sourceFields[key] ?? ""));
-}
-
 export function applyAnnotations(
   document: VideoDocument,
   records: Record<string, AnnotationRecord>,
 ): VideoDocument {
-  const output = structuredClone(document);
-  const replacements: Array<TextRange & { value: string }> = [];
-  for (const { english } of pairUnits(document)) {
-    const record = records[english.id];
-    if (record?.decision !== "false") continue;
-    for (const key of english.editableKeys) {
-      const span = english.fields[key];
-      const value = record.correctedFields[key];
-      if (span && value !== undefined) replacements.push({ start: span.start, end: span.end, value });
-    }
-  }
-  replacements.sort((left, right) => right.start - left.start);
-  output.caption_en = replacements.reduce(
-    (caption, replacement) => caption.slice(0, replacement.start) + replacement.value + caption.slice(replacement.end),
-    document.caption_en,
-  );
-  return output;
+  void records;
+  return structuredClone(document);
 }
 
 export function createAnnotationMeta(
@@ -402,30 +377,50 @@ export function createAnnotationMeta(
   document: VideoDocument,
   records: Record<string, AnnotationRecord>,
   exportedAt = new Date().toISOString(),
+  stoppedAtUnitId?: string,
 ): AnnotationMeta {
   const units = buildAnnotationUnits(document);
-  const counts = { total: units.length, pending: 0, true: 0, false: 0, question: 0, other: 0 };
-  const auditUnits = units.map((unit) => {
+  const fallbackStop = Object.values(records)
+    .filter((record) => record.decision === "false")
+    .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))[0]?.unitId;
+  const stopUnitId = stoppedAtUnitId && records[stoppedAtUnitId]?.decision === "false"
+    ? stoppedAtUnitId
+    : fallbackStop;
+  const stoppedAt = stopUnitId ? records[stopUnitId]?.updatedAt : undefined;
+  const auditUnits: AnnotationMeta["units"] = [];
+  for (const unit of units) {
     const record = records[unit.id];
-    const decision: Decision = record?.decision ?? "pending";
-    counts[decision] += 1;
-    return {
+    if (!record) continue;
+    if (stoppedAt && record.updatedAt > stoppedAt && unit.id !== stopUnitId) continue;
+    auditUnits.push({
       unit_id: unit.id,
       theme: unit.theme,
-      decision,
+      decision: record.decision,
       source_fields: unit.sourceFields,
-      corrected_fields: record?.decision === "false" ? record.correctedFields : unit.sourceFields,
-      updated_at: record?.updatedAt ?? null,
-    };
-  });
+      updated_at: record.updatedAt,
+    });
+  }
+  const falseUnit = stopUnitId ? auditUnits.find((unit) => unit.unit_id === stopUnitId) : undefined;
+  const trueCount = auditUnits.filter((unit) => unit.decision === "true").length;
+  const falseCount = auditUnits.filter((unit) => unit.decision === "false").length;
+  const earlyStopped = Boolean(falseUnit);
   return {
-    schema_version: "2.2",
+    schema_version: "3.0",
     task_id: taskId,
     annotator_id: annotatorId,
     source_sha256: sourceSha256,
-    export_status: counts.pending > 0 ? "partial" : "complete",
+    export_status: "complete",
+    video_decision: earlyStopped ? "false" : "true",
+    completion_mode: earlyStopped ? "false_early_stop" : "all_units",
+    stopped_at_unit_id: falseUnit?.unit_id ?? null,
     exported_at: exportedAt,
-    counts,
+    counts: {
+      source_total: units.length,
+      annotated: auditUnits.length,
+      true: trueCount,
+      false: falseCount,
+      unreviewed: units.length - auditUnits.length,
+    },
     units: auditUnits,
   };
 }

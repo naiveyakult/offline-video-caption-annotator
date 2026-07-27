@@ -5,12 +5,12 @@
 ## 功能
 
 - 左侧播放原视频，支持自由拖动时间轴和从头重播完整视频；点击带时间的标注卡片只定位到起始时间，不自动播放片段。
-- 使用互斥的 `True / False / Question / Other` 判定；False 修订英文，Question 标记受分段或时间限制而无法合理修订的匹配问题，中文仅供对照。
-- 标注正文和 False 编辑框支持 12px / 14px / 16px 三档字号，并在本机记住选择。
-- Visible Text 不参与标注，导出时保持原样。
-- SQLite 自动保存任务、草稿、当前单元和视频位置，异常退出后可恢复。
-- 原始 MP4 和 JSONL 永不修改，支持部分或完整导出。
-- 仅为全部单元已完成判定的任务生成结果文件；未开始、进行中和异常任务只保留在 manifest 状态清单中。
+- 使用互斥的 `True / False` 判定，中文仅供对照；False 无需修订文本，点击后立即结束当前视频并进入下一视频。
+- 标注正文支持 12px / 14px / 16px 三档字号，并在本机记住选择。
+- Visible Text 不参与标注。
+- SQLite 自动保存任务、当前单元和视频位置，异常退出后可恢复。
+- 原始 MP4 和 JSONL 永不修改，导出只包含标注审计，不再生成 corrected.json。
+- 全部单元均为 True 或遇到 False 提前结束的任务可生成审计文件；未完成和异常任务只保留在 manifest 状态清单中。
 - 全程离线，不依赖服务器、Docker 或中心数据库。
 
 ## 项目目录
@@ -37,7 +37,7 @@ exports/<timestamp>/
 
 ## Windows 免安装版
 
-从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.4.1_windows_x64_portable.zip`：
+从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.6.0_windows_x64_portable.zip`：
 
 1. 将 ZIP 完整解压到本机磁盘。
 2. 双击 `启动视频剧情标注.cmd`，不要单独移动或启动 EXE。
@@ -45,17 +45,21 @@ exports/<timestamp>/
 
 便携包不支持 UNC 或网络共享位置。当前版本未进行商业代码签名，Windows 可能显示 SmartScreen 提示。WebView2 缓存保存在 `%LOCALAPPDATA%`，标注数据仍只写入你选择的项目目录。
 
-Windows 便携包由 `.github/workflows/windows-portable.yml` 在 `windows-2022` 构建。普通提交生成保留 7 天的 Artifact；推送 `v*` 标签会创建公开 GitHub Release。
+Windows v0.6.0 基于 v0.4.5，保留原播放器和多音轨异常检测。便携包由 `codex/windows-v0.6.0` 维护分支在 `windows-2022` 构建，并汇总到 v0.6.0 Release。
 
 ## macOS Apple 芯片 libmpv 正式版
 
-为解决部分 AAC/PCE 音轨在 WKWebView 中没有声音的问题，macOS 版内嵌 libmpv，并使用 FFmpeg 解码音频。`v0.4.4` 进一步减少标注列表滚动时的原生播放器边界更新，并将底部操作统一为从头重播完整视频。Windows 继续使用原播放器和 v0.4.1 便携包。
+为解决部分 AAC/PCE 音轨在 WKWebView 中没有声音的问题，macOS 版内嵌 libmpv，并使用 FFmpeg 解码音频。v0.6.0 基于 v0.4.4，保留其播放器行为，仅升级二分类标注和纯审计导出。
 
-从 GitHub Releases 下载 `offline-video-caption-annotator_0.4.4_macos_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。该版本使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
+从 GitHub Releases 下载 `offline-video-caption-annotator_0.6.0_macos_aarch64.dmg`，并可使用同名 `.sha256` 文件核对完整性。该版本使用 ad-hoc 签名、未公证；首次打开如被 macOS 拦截，请在 Finder 中右键应用并选择“打开”。
 
 macOS 标注页提供播放/暂停、音量、静音、时间轴、时间显示、视频专注模式和从头重播完整视频等自定义控件。libmpv 初始化或加载失败时会自动回退到系统播放器并显示原因，也可以点击“重试 libmpv”。
 
-升级软件不会清空标注进度。重新打开原项目目录时，应用会继续读取 `.annotation-workspace` 中的判定、False 草稿、当前单元和视频位置；进行中的任务完成后，下一次导出才会生成其结果文件。
+升级软件不会清空标注进度。重新打开原项目目录时，应用会继续读取 `.annotation-workspace` 中的历史判定、旧草稿、当前单元和视频位置。旧 Question、Other 按 False 读取，但原始兼容信息继续保存在会话中。
+
+## 导出内容
+
+导出目录只包含 `manifest.json` 和每个已完成任务的 `<task_id>.annotation_meta.json`。审计文件仅列出人工实际操作过的单元；False 后未查看的单元不生成逐条记录，只在汇总中计入 `unreviewed`。源 JSONL、Caption 和视频不会复制到导出目录。
 
 ## macOS 本地构建
 

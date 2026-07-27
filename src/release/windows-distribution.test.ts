@@ -31,9 +31,9 @@ describe("Windows portable distribution contract", () => {
       };
     };
 
-    expect(packageJson.version).toBe("0.4.4");
+    expect(packageJson.version).toBe("0.6.0");
     expect(shared.version).toBe(packageJson.version);
-    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.4.4"');
+    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.6.0"');
     expect(read("scripts/windows/使用说明.txt")).toContain("0.4.1");
     expect(shared.app.security.assetProtocol.scope).toEqual([]);
     expect(mac.bundle.targets).toEqual(["dmg", "app"]);
@@ -77,7 +77,7 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("gh release upload");
     expect(workflow).toContain("gh release create");
     expect(workflow).toContain("|| true");
-    expect(workflow).toContain("github.ref_name != 'v0.4.4'");
+    expect(workflow).toContain("github.ref_name != 'v0.6.0'");
     expect(workflow).toContain("视频剧情标注-0.4.1-windows-x64-portable");
     expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.4.1_windows_x64_portable");
     expect(runtime.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
@@ -98,7 +98,8 @@ describe("Windows portable distribution contract", () => {
     expect(ignore).toContain("outputs/");
     expect(readme).toContain("scenes_batch_final_caption_zh.jsonl");
     expect(readme).toContain("media-batch/");
-    expect(readme).toContain("仅为全部单元已完成判定的任务生成结果文件");
+    expect(readme).toContain("False 无需修订文本");
+    expect(readme).toContain("导出目录只包含 `manifest.json`");
     expect(readme).toContain(".annotation-workspace");
   });
 });

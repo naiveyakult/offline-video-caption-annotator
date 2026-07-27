@@ -2,25 +2,31 @@ name: macOS libmpv release
 
 on:
   push:
-    tags: ["v0.4.4"]
+    tags: ["v0.6.0"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  RELEASE_TAG: v0.4.4
-  DMG_NAME: offline-video-caption-annotator_0.4.4_macos_aarch64.dmg
-  SHA_NAME: offline-video-caption-annotator_0.4.4_macos_aarch64.dmg.sha256
+  RELEASE_TAG: v0.6.0
+  DMG_NAME: offline-video-caption-annotator_0.6.0_macos_aarch64.dmg
+  SHA_NAME: offline-video-caption-annotator_0.6.0_macos_aarch64.dmg.sha256
 
 jobs:
   build-macos:
     runs-on: macos-14
     timeout-minutes: 90
+    outputs:
+      source_sha: ${{ steps.release-source.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: v0.4.4
+          ref: v0.6.0
+
+      - name: Record release source commit
+        id: release-source
+        run: echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
       - uses: actions/setup-node@v4
         with:
@@ -79,7 +85,7 @@ jobs:
           set -euo pipefail
 
           app_path="src-tauri/target/release/bundle/macos/视频剧情标注.app"
-          built_dmg_path="src-tauri/target/release/bundle/dmg/视频剧情标注_0.4.4_aarch64.dmg"
+          built_dmg_path="src-tauri/target/release/bundle/dmg/视频剧情标注_0.6.0_aarch64.dmg"
           binary_path="${app_path}/Contents/MacOS/offline-video-annotator"
           libmpv_path="${app_path}/Contents/Frameworks/libmpv.2.dylib"
 
@@ -89,7 +95,7 @@ jobs:
           test -f "${app_path}/Contents/Resources/libmpv-runtime.json"
           test -f "${app_path}/Contents/Resources/licenses/mpv-LGPL-2.1.txt"
           test -f "${app_path}/Contents/Resources/licenses/FFmpeg-LGPL-2.1.txt"
-          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")" = "0.4.4"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_path}/Contents/Info.plist")" = "0.6.0"
           test "$(lipo -archs "${binary_path}")" = "arm64"
           test "$(lipo -archs "${libmpv_path}")" = "arm64"
           test "$(otool -D "${libmpv_path}" | tail -1)" = "@rpath/libmpv.2.dylib"
@@ -110,7 +116,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: offline-video-caption-annotator-0.4.4-macos-aarch64
+          name: offline-video-caption-annotator-0.6.0-macos-aarch64
           path: release-assets/*
           retention-days: 7
           compression-level: 0
@@ -123,17 +129,25 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: offline-video-caption-annotator-0.4.4-macos-aarch64
+          name: offline-video-caption-annotator-0.6.0-macos-aarch64
           path: release-assets
 
       - name: Publish macOS libmpv release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          MACOS_BUILD_SHA: ${{ needs.build-macos.outputs.source_sha }}
         run: |
           test -f "release-assets/${DMG_NAME}"
           test -f "release-assets/${SHA_NAME}"
           if ! gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release create "${RELEASE_TAG}" --generate-notes --title "视频剧情标注 ${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" || true
+            windows_sha="$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" refs/heads/codex/windows-v0.6.0 | cut -f1)"
+            gh release create "${RELEASE_TAG}" \
+              --title "视频剧情标注 ${RELEASE_TAG}" \
+              --notes "二分类高速标注与纯审计导出。
+
+macOS：基于 v0.4.4，保留 libmpv；构建提交 ${MACOS_BUILD_SHA}。
+Windows：基于 v0.4.5，保留多音轨检测；构建提交 ${windows_sha:-待 Windows 发布流程补充}。" \
+              --repo "${GITHUB_REPOSITORY}" || true
           fi
           gh release upload "${RELEASE_TAG}" \
             "release-assets/${DMG_NAME}" \
