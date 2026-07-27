@@ -64,6 +64,7 @@ describe("macOS v0.6.0 libmpv release contract", () => {
     const workflow = read(".github/workflows/macos-release.yml");
 
     expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain('branches: ["codex/macos-v0.6.0"]');
     expect(workflow).toContain('tags: ["v0.6.0"]');
     expect(workflow).not.toContain("branches: [main]");
     expect(workflow).toContain('sha=$(git rev-parse HEAD)');
