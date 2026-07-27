@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildAnnotationUnits } from "../domain/annotation";
+import { buildAnnotationUnits, parseVideoDocument } from "../domain/annotation";
 import { captionFixture } from "../test/caption-fixture";
 import type { ProjectTask } from "../domain/types";
 import { BrowserProjectStorage, updateTaskStatus } from "./project-storage";
@@ -29,7 +29,7 @@ function completeTask(task: ProjectTask): ProjectTask {
     unit.id,
     {
       unitId: unit.id,
-      decision: "question" as const,
+      decision: "true" as const,
       correctedFields: {},
       updatedAt: `2026-07-17T00:00:${String(index).padStart(2, "0")}.000Z`,
     },
@@ -38,6 +38,30 @@ function completeTask(task: ProjectTask): ProjectTask {
 }
 
 describe("BrowserProjectStorage JSONL import", () => {
+  it("treats the first saved False as a completed early-stop task", () => {
+    const stopped = updateTaskStatus({
+      id: "early-stop",
+      jsonPath: "scenes_batch_final_caption_zh.jsonl",
+      videoPath: "clips/early-stop.mp4",
+      videoUrl: "blob:early-stop",
+      sourceSha256: "hash",
+      document: parseVideoDocument(JSON.stringify(captionFixture)),
+      status: "in_progress",
+      drafts: {},
+      videoPosition: 0,
+      records: {
+        "overview.overall_visual_style": {
+          unitId: "overview.overall_visual_style",
+          decision: "false",
+          correctedFields: { overall_visual_style: "Cinematic natural light." },
+          updatedAt: "2026-07-27T00:00:00.000Z",
+        },
+      },
+    });
+
+    expect(stopped.status).toBe("complete");
+  });
+
   it("normalizes file bytes to a typed array before WebCrypto hashing", async () => {
     const nativeDigest = crypto.subtle.digest.bind(crypto.subtle);
     const digest = vi.spyOn(crypto.subtle, "digest").mockImplementation(async (algorithm, data) => {
@@ -216,7 +240,7 @@ describe("BrowserProjectStorage JSONL import", () => {
     expect(restored.tasks[0]!.records).toEqual({});
   });
 
-  it("restores existing v0.3 decisions together with the new Question decision", async () => {
+  it("converts legacy Question and Other records to False without losing their original values", async () => {
     const storage = new BrowserProjectStorage();
     const files = [
       projectFile(
@@ -253,7 +277,7 @@ describe("BrowserProjectStorage JSONL import", () => {
         correctedFields: {},
         updatedAt: "2026-07-14T00:00:03.000Z",
       },
-    };
+    } as unknown as ProjectTask["records"];
     first.tasks[0]!.drafts = {
       "speech_transcript.0": {
         unitId: "speech_transcript.0",
@@ -269,9 +293,23 @@ describe("BrowserProjectStorage JSONL import", () => {
     expect(Object.values(restored.tasks[0]!.records).map((record) => record.decision)).toEqual([
       "true",
       "false",
-      "other",
-      "question",
+      "false",
+      "false",
     ]);
+    expect(restored.tasks[0]!.records["overview.character_profiles.0"]).toMatchObject({
+      legacyDecision: "other",
+      legacyCorrectedFields: {},
+    });
+    expect(restored.tasks[0]!.records["overview.narrative_theme"]).toMatchObject({
+      legacyDecision: "question",
+      legacyCorrectedFields: {},
+    });
+    expect(restored.tasks[0]).toMatchObject({
+      status: "complete",
+      videoDecision: "false",
+      completionMode: "false_early_stop",
+      stoppedAtUnitId: "overview.overall_audio_style",
+    });
     expect(restored.tasks[0]!.drafts["speech_transcript.0"]?.fields.content).toBe("Draft content.");
     expect(restored.tasks[0]!.videoPosition).toBe(12.34);
   });
@@ -327,7 +365,7 @@ describe("BrowserProjectStorage JSONL import", () => {
     expect(restored.tasks[0]!.drafts["speech_transcript.0"]?.fields.content).toBe("saved draft");
   });
 
-  it("exports only completed tasks and keeps every task in the schema 2.3 manifest", async () => {
+  it("exports only audit files for completed tasks and keeps every task in the schema 3.0 manifest", async () => {
     const storage = new BrowserProjectStorage();
     const rows = [
       captionRow("clips/complete.mp4"),
@@ -347,11 +385,18 @@ describe("BrowserProjectStorage JSONL import", () => {
       projectFile("pending.mp4", "video", "export-batch/clips/pending.mp4", "video/mp4"),
     ] as unknown as FileList;
     const project = await storage.openFiles(files);
-    project.tasks[0] = completeTask(project.tasks[0]!);
+    project.tasks[0] = updateTaskStatus({ ...project.tasks[0]!, records: {
+      "overview.overall_visual_style": {
+        unitId: "overview.overall_visual_style",
+        decision: "false",
+        correctedFields: { overall_visual_style: "Cinematic natural light." },
+        updatedAt: "2026-07-14T00:00:00.000Z",
+      },
+    } });
     project.tasks[1] = updateTaskStatus({ ...project.tasks[1]!, records: {
       "overview.overall_visual_style": {
         unitId: "overview.overall_visual_style",
-        decision: "question",
+        decision: "true",
         correctedFields: {},
         updatedAt: "2026-07-14T00:00:00.000Z",
       },
@@ -376,8 +421,12 @@ describe("BrowserProjectStorage JSONL import", () => {
         invalid: 1,
         skipped: 3,
       });
-      expect(blobs).toHaveLength(3);
-      const meta = JSON.parse(await readBlob(blobs[1]!)) as { schema_version: string; export_status: string };
+      expect(blobs).toHaveLength(2);
+      const meta = JSON.parse(await readBlob(blobs[0]!)) as {
+        schema_version: string;
+        export_status: string;
+        video_decision: string;
+      };
       const manifest = JSON.parse(await readBlob(blobs.at(-1)!)) as {
         schema_version: string;
         export_status: string;
@@ -385,9 +434,10 @@ describe("BrowserProjectStorage JSONL import", () => {
         annotation_counts: Record<string, number>;
         tasks: Array<Record<string, unknown>>;
       };
-      expect(meta.schema_version).toBe("2.2");
+      expect(meta.schema_version).toBe("3.0");
       expect(meta.export_status).toBe("complete");
-      expect(manifest.schema_version).toBe("2.3");
+      expect(meta.video_decision).toBe("false");
+      expect(manifest.schema_version).toBe("3.0");
       expect(manifest.export_status).toBe("partial");
       expect(manifest.task_counts).toEqual({
         total: 4,
@@ -395,23 +445,31 @@ describe("BrowserProjectStorage JSONL import", () => {
         not_started: 1,
         in_progress: 1,
         complete: 1,
+        true_complete: 0,
+        false_early_stop: 1,
         invalid: 1,
         skipped: 3,
       });
       expect(manifest.annotation_counts).toEqual({
-        total: 9,
-        pending: 0,
+        source_total: 9,
+        annotated: 1,
         true: 0,
-        false: 0,
-        question: 9,
-        other: 0,
+        false: 1,
+        unreviewed: 8,
       });
       expect(manifest.tasks).toMatchObject([
-        { task_id: "complete", task_status: "complete", export_status: "complete" },
+        {
+          task_id: "complete",
+          task_status: "complete",
+          export_status: "complete",
+          video_decision: "false",
+          completion_mode: "false_early_stop",
+        },
         { task_id: "progress", task_status: "in_progress", export_status: "skipped", skipped_reason: "任务尚未完成" },
         { task_id: "pending", task_status: "not_started", export_status: "skipped", skipped_reason: "任务尚未开始" },
         { task_id: "missing", task_status: "invalid", export_status: "skipped" },
       ]);
+      expect(manifest.tasks[0]).not.toHaveProperty("corrected_file");
     } finally {
       createObjectUrl.mockRestore();
       click.mockRestore();

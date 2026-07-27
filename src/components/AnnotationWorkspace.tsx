@@ -10,15 +10,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
-  CircleAlert,
-  CircleHelp,
   Download,
   Play,
   RotateCcw,
-  Save,
   X,
 } from "lucide-react";
-import { buildAnnotationUnits, timeToSeconds, validateCorrection } from "../domain/annotation";
+import { buildAnnotationUnits, timeToSeconds } from "../domain/annotation";
 import type {
   AnnotationFontSize,
   AnnotationUnit,
@@ -65,7 +62,6 @@ interface AnnotationWorkspaceProps {
     decision: Exclude<Decision, "pending">,
     fields: Record<string, string>,
   ) => void;
-  onDraft: (unitId: string, decision: "false", fields: Record<string, string>) => void;
   onVideoPosition: (position: number) => void;
   onThemeChange?: (theme: Theme) => void;
   onUnitChange?: (unitId: string) => void;
@@ -82,7 +78,6 @@ export function AnnotationWorkspace({
   onNextTask,
   onExport,
   onCommit,
-  onDraft,
   onVideoPosition,
   onThemeChange,
   onUnitChange,
@@ -160,6 +155,11 @@ export function AnnotationWorkspace({
     fields: Record<string, string>,
   ) => {
     onCommit(unitId, decision, fields);
+    if (decision === "false") {
+      if (onNextTask) onNextTask();
+      else onBack();
+      return;
+    }
     advanceFrom(unitId);
   };
 
@@ -279,10 +279,8 @@ export function AnnotationWorkspace({
                 unit={unit}
                 active={unit.id === activeUnitId}
                 record={task.records[unit.id]}
-                draft={task.drafts[unit.id]}
                 onSelect={() => playUnit(unit)}
                 onCommit={commitAndAdvance}
-                onDraft={onDraft}
               />
             ))}
           </div>
@@ -296,36 +294,17 @@ interface UnitCardProps {
   unit: AnnotationUnit;
   active: boolean;
   record: ProjectTask["records"][string] | undefined;
-  draft: ProjectTask["drafts"][string] | undefined;
   onSelect: () => void;
   onCommit: AnnotationWorkspaceProps["onCommit"];
-  onDraft: AnnotationWorkspaceProps["onDraft"];
 }
 
-function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: UnitCardProps) {
-  const savedCorrection = record?.decision === "false" ? record.correctedFields : undefined;
-  const initialFields = draft?.fields ?? savedCorrection ?? unit.sourceFields;
-  const [editingFalse, setEditingFalse] = useState(Boolean(draft));
-  const [showQuestionHelp, setShowQuestionHelp] = useState(false);
-  const [showOtherHelp, setShowOtherHelp] = useState(false);
-  const [fields, setFields] = useState<Record<string, string>>(initialFields);
-  const changed = editingFalse ? validateCorrection("false", unit.sourceFields, fields) : false;
-  const selectedDecision: Decision = editingFalse ? "false" : (record?.decision ?? "pending");
-
-  useEffect(() => {
-    if (editingFalse) onDraft(unit.id, "false", fields);
-  }, [editingFalse, fields]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const startFalseEdit = () => {
-    setFields(draft?.fields ?? savedCorrection ?? unit.sourceFields);
-    setEditingFalse(true);
-  };
-
+function UnitCard({ unit, active, record, onSelect, onCommit }: UnitCardProps) {
+  const selectedDecision: Decision = record?.decision ?? "pending";
   return (
     <article id={`unit-card-${unit.id}`} className={`unit-card ${active ? "active" : ""}`} onClick={onSelect}>
       <div className="unit-heading">
         <div><span className="unit-index">{unit.title}</span>{unit.subtitle && <small>{unit.subtitle}</small>}</div>
-        <DecisionBadge decision={record?.decision ?? "pending"} hasDraft={Boolean(draft) || editingFalse} />
+        <DecisionBadge decision={record?.decision ?? "pending"} />
       </div>
 
       <div className="source-fields">
@@ -348,97 +327,18 @@ function UnitCard({ unit, active, record, draft, onSelect, onCommit, onDraft }: 
 
       <div className="decision-row" onClick={(event) => event.stopPropagation()}>
         <button aria-pressed={selectedDecision === "true"} className={selectedDecision === "true" ? "decision true selected" : "decision true"} onClick={() => {
-          setEditingFalse(false);
           onCommit(unit.id, "true", unit.sourceFields);
         }}><Check size={16} /> True</button>
-        <button aria-pressed={selectedDecision === "false"} id={`${unit.id}-false`} className={selectedDecision === "false" ? "decision false selected" : "decision false"} onClick={startFalseEdit}>
+        <button aria-pressed={selectedDecision === "false"} id={`${unit.id}-false`} className={selectedDecision === "false" ? "decision false selected" : "decision false"} onClick={() => onCommit(unit.id, "false", unit.sourceFields)}>
           <X size={16} /> False
         </button>
-        <span
-          className="decision-help-control"
-          onMouseEnter={() => setShowQuestionHelp(true)}
-          onMouseLeave={() => setShowQuestionHelp(false)}
-          onFocus={() => setShowQuestionHelp(true)}
-          onBlur={() => setShowQuestionHelp(false)}
-        >
-          <button
-            id={`${unit.id}-question`}
-            aria-pressed={selectedDecision === "question"}
-            className={selectedDecision === "question" ? "decision question selected" : "decision question"}
-            aria-describedby={showQuestionHelp ? `${unit.id}-question-tooltip` : undefined}
-            onClick={() => {
-              setEditingFalse(false);
-              onCommit(unit.id, "question", unit.sourceFields);
-            }}
-          >
-            <CircleHelp size={16} /> Question
-          </button>
-          {showQuestionHelp && (
-            <span id={`${unit.id}-question-tooltip`} className="decision-tooltip" role="tooltip">
-              Question：事件匹配不准确，但受当前分段、说话人或时间范围限制，无法合理修订；问题不属于严重错误。
-            </span>
-          )}
-        </span>
-        <span
-          className="decision-help-control"
-          onMouseEnter={() => setShowOtherHelp(true)}
-          onMouseLeave={() => setShowOtherHelp(false)}
-          onFocus={() => setShowOtherHelp(true)}
-          onBlur={() => setShowOtherHelp(false)}
-        >
-          <button
-            id={`${unit.id}-other`}
-            aria-pressed={selectedDecision === "other"}
-            className={selectedDecision === "other" ? "decision other selected" : "decision other"}
-            aria-describedby={showOtherHelp ? `${unit.id}-other-tooltip` : undefined}
-            onClick={() => {
-              setEditingFalse(false);
-              onCommit(unit.id, "other", unit.sourceFields);
-            }}
-          >
-            <CircleAlert size={16} /> Other
-          </button>
-          {showOtherHelp && (
-            <span id={`${unit.id}-other-tooltip`} className="decision-tooltip" role="tooltip">
-              Other：人物或事件本身存在严重错误，无需修改文本。
-            </span>
-          )}
-        </span>
         {unit.startTime && <button className="segment-play" onClick={onSelect} aria-label={`播放 ${unit.title}`}><Play size={15} /> 播放片段</button>}
       </div>
-
-      {editingFalse && (
-        <div
-          className="inline-editor"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div className="editor-title"><strong>修订英文内容</strong><span>至少修改一个英文可编辑字段后保存</span></div>
-          {unit.editableKeys.map((key) => (
-            <label key={key}>
-              <span>{FIELD_LABELS[key]?.english ?? key}</span>
-              <textarea
-                aria-label={`修订 ${key}`}
-                value={fields[key] ?? ""}
-                rows={["description", "content", "overall_visual_style", "overall_audio_style", "narrative_theme", "profile"].includes(key) ? 5 : 2}
-                onChange={(event) => setFields((current) => ({ ...current, [key]: event.target.value }))}
-              />
-            </label>
-          ))}
-          <div className="editor-actions">
-            <button className="text-button" onClick={() => setEditingFalse(false)}>收起并保留草稿</button>
-            <button className="primary-button" disabled={!changed} onClick={() => {
-              onCommit(unit.id, "false", fields);
-              setEditingFalse(false);
-            }}><Save size={16} /> 保存修订</button>
-          </div>
-        </div>
-      )}
     </article>
   );
 }
 
-function DecisionBadge({ decision, hasDraft }: { decision: Decision; hasDraft: boolean }) {
-  if (hasDraft && decision === "pending") return <span className="status-badge draft">False 草稿</span>;
-  const labels: Record<Decision, string> = { pending: "待标注", true: "True", false: "False", question: "Question", other: "Other" };
+function DecisionBadge({ decision }: { decision: Decision }) {
+  const labels: Record<Decision, string> = { pending: "待标注", true: "True", false: "False" };
   return <span className={`status-badge ${decision}`}>{labels[decision]}</span>;
 }

@@ -1,5 +1,5 @@
 export type Theme = "overview" | "storyline" | "speech_transcript";
-export type Decision = "pending" | "true" | "false" | "question" | "other";
+export type Decision = "pending" | "true" | "false";
 export type AnnotationFontSize = 12 | 14 | 16;
 
 export interface VideoDocument {
@@ -25,6 +25,8 @@ export interface AnnotationRecord {
   decision: Exclude<Decision, "pending">;
   correctedFields: Record<string, string>;
   updatedAt: string;
+  legacyDecision?: "question" | "other";
+  legacyCorrectedFields?: Record<string, string>;
 }
 
 export interface DraftRecord {
@@ -37,26 +39,27 @@ export interface DraftRecord {
 export interface AnnotationMetaUnit {
   unit_id: string;
   theme: Theme;
-  decision: Decision;
+  decision: Exclude<Decision, "pending">;
   source_fields: Record<string, string>;
-  corrected_fields: Record<string, string>;
-  updated_at: string | null;
+  updated_at: string;
 }
 
 export interface AnnotationMeta {
-  schema_version: "2.2";
+  schema_version: "3.0";
   task_id: string;
   annotator_id: string;
   source_sha256: string;
-  export_status: "partial" | "complete";
+  export_status: "complete";
+  video_decision: Exclude<Decision, "pending">;
+  completion_mode: "all_units" | "false_early_stop";
+  stopped_at_unit_id: string | null;
   exported_at: string;
   counts: {
-    total: number;
-    pending: number;
+    source_total: number;
+    annotated: number;
     true: number;
     false: number;
-    question: number;
-    other: number;
+    unreviewed: number;
   };
   units: AnnotationMetaUnit[];
 }
@@ -87,6 +90,9 @@ export interface ProjectTask {
   error?: string;
   mediaAnomaly?: MediaAnomaly;
   status: TaskStatus;
+  videoDecision?: Exclude<Decision, "pending">;
+  completionMode?: "all_units" | "false_early_stop";
+  stoppedAtUnitId?: string;
   records: Record<string, AnnotationRecord>;
   drafts: Record<string, DraftRecord>;
   videoPosition: number;

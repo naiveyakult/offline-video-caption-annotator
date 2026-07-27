@@ -25,7 +25,6 @@ export default function App() {
   const openTask = useAppStore((state) => state.openTask);
   const closeTask = useAppStore((state) => state.closeTask);
   const commit = useAppStore((state) => state.commit);
-  const saveDraft = useAppStore((state) => state.saveDraft);
   const setVideoPosition = useAppStore((state) => state.setVideoPosition);
   const setTheme = useAppStore((state) => state.setTheme);
   const setActiveUnit = useAppStore((state) => state.setActiveUnit);
@@ -136,7 +135,6 @@ export default function App() {
           onNextTask={nextTask ? () => openTask(nextTask.id) : undefined}
           onExport={() => void exportProject()}
           onCommit={commit}
-          onDraft={saveDraft}
           onVideoPosition={setVideoPosition}
           onThemeChange={setTheme}
           onUnitChange={setActiveUnit}

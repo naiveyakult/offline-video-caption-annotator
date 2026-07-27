@@ -5,13 +5,13 @@
 ## 功能
 
 - 左侧播放原视频，支持自由拖动时间轴和重播当前片段。
-- 使用互斥的 `True / False / Question / Other` 判定；False 修订英文，Question 标记受分段或时间限制而无法合理修订的匹配问题，中文仅供对照。
-- 标注正文和 False 编辑框支持 12px / 14px / 16px 三档字号，并在本机记住选择。
-- Visible Text 不参与标注，导出时保持原样。
-- SQLite 自动保存任务、草稿、当前单元和视频位置，异常退出后可恢复。
-- 原始 MP4 和 JSONL 永不修改，支持部分或完整导出。
-- 仅为全部单元已完成判定的任务生成结果文件；未开始、进行中和异常任务只保留在 manifest 状态清单中。
-- Windows v0.4.5 基于 v0.4.1，仅新增 MP4 音轨自动检测；多音轨及检测失败任务会标记为异常并跳过导出。
+- 使用互斥的 `True / False` 判定，中文仅供对照；False 无需修订文本，点击后立即结束当前视频并进入下一视频。
+- 标注正文支持 12px / 14px / 16px 三档字号，并在本机记住选择。
+- Visible Text 不参与标注。
+- SQLite 自动保存任务、当前单元和视频位置，异常退出后可恢复。
+- 原始 MP4 和 JSONL 永不修改，导出只包含标注审计，不再生成 corrected.json。
+- 全部单元均为 True 或遇到 False 提前结束的任务可生成审计文件；未完成和异常任务只保留在 manifest 状态清单中。
+- v0.6.0 基于 Windows v0.4.5，完整保留 MP4 音轨自动检测；多音轨及检测失败任务会标记为异常并跳过导出。
 - 全程离线，不依赖服务器、Docker 或中心数据库。
 
 ## 项目目录
@@ -38,7 +38,7 @@ exports/<timestamp>/
 
 ## Windows 免安装版
 
-从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.4.5_windows_x64_portable.zip`：
+从 GitHub Actions 或 Releases 下载 `视频剧情标注_0.6.0_windows_x64_portable.zip`：
 
 1. 将 ZIP 完整解压到本机磁盘。
 2. 双击 `启动视频剧情标注.cmd`，不要单独移动或启动 EXE。
@@ -46,15 +46,19 @@ exports/<timestamp>/
 
 便携包不支持 UNC 或网络共享位置。当前版本未进行商业代码签名，Windows 可能显示 SmartScreen 提示。WebView2 缓存保存在 `%LOCALAPPDATA%`，标注数据仍只写入你选择的项目目录。
 
-Windows 便携包由 `.github/workflows/windows-portable.yml` 在 `windows-2022` 构建。维护分支提交生成保留 7 天的 Artifact；推送 `v0.4.5` 标签会创建公开 GitHub Release。
+Windows 便携包由 `.github/workflows/windows-portable.yml` 在 `windows-2022` 构建。`codex/windows-v0.6.0` 维护分支生成保留 7 天的 Artifact，并将通过验证的 ZIP 上传到 `v0.6.0` Release。
 
 ## macOS Apple 芯片版
 
-macOS 不发布 v0.4.5，请继续使用 v0.4.4。Windows v0.4.5 维护分支不包含后续 macOS 播放器改造；历史 v0.4.1 安装包 `视频剧情标注_0.4.1_aarch64.dmg` 不会重新构建或覆盖。
+v0.6.0 macOS Apple 芯片版基于 v0.4.4，完整保留 libmpv 播放器；Windows 与 macOS 分别从各自稳定基线构建并汇总到同一个 Release。
 
-音轨检测结果缓存在项目的 `.annotation-workspace/session.sqlite` 中，并按视频相对路径、大小和修改时间自动失效。多音轨任务会保留已有判定、草稿和视频位置；替换为单音轨视频后，重新打开项目即可继续原进度。
+音轨检测结果缓存在项目的 `.annotation-workspace/session.sqlite` 中，并按视频相对路径、大小和修改时间自动失效。多音轨任务会保留已有判定和视频位置；替换为单音轨视频后，重新打开项目即可继续原进度。
 
-升级软件不会清空标注进度。重新打开原项目目录时，应用会继续读取 `.annotation-workspace` 中的判定、False 草稿、当前单元和视频位置；进行中的任务完成后，下一次导出才会生成其结果文件。
+升级软件不会清空标注进度。重新打开原项目目录时，应用会继续读取 `.annotation-workspace` 中的历史判定、旧草稿、当前单元和视频位置。旧 Question、Other 按 False 读取，但原始兼容信息继续保存在会话中。
+
+## 导出内容
+
+导出目录只包含 `manifest.json` 和每个已完成任务的 `<task_id>.annotation_meta.json`。审计文件仅列出人工实际操作过的单元；False 后未查看的单元不生成逐条记录，只在汇总中计入 `unreviewed`。源 JSONL、Caption 和视频不会复制到导出目录。
 
 ## macOS 本地构建
 

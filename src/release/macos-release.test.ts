@@ -27,7 +27,6 @@ describe("macOS v0.4.1 release contract", () => {
 
   it("verifies and uploads only the macOS v0.4.1 assets", () => {
     const workflow = read(".github/workflows/macos-release.yml");
-    const readme = read("README.md");
 
     expect(workflow).toContain("视频剧情标注_0.4.1_aarch64.dmg");
     expect(workflow).toContain("视频剧情标注_0.4.1_aarch64.dmg.sha256");
@@ -42,7 +41,6 @@ describe("macOS v0.4.1 release contract", () => {
     expect(workflow).toContain('gh release upload "${RELEASE_TAG}"');
     expect(workflow).toContain("--clobber");
     expect(workflow).not.toContain("windows_x64_portable");
-    expect(readme).toContain("视频剧情标注_0.4.1_aarch64.dmg");
   });
 
   it("runs for the v0.4.1 tag and remains manually rerunnable", () => {

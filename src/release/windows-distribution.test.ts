@@ -32,10 +32,10 @@ describe("Windows portable distribution contract", () => {
       };
     };
 
-    expect(packageJson.version).toBe("0.4.5");
+    expect(packageJson.version).toBe("0.6.0");
     expect(shared.version).toBe(packageJson.version);
-    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.4.5"');
-    expect(read("scripts/windows/使用说明.txt")).toContain("0.4.5");
+    expect(read("src-tauri/Cargo.toml")).toContain('version = "0.6.0"');
+    expect(read("scripts/windows/使用说明.txt")).toContain("0.6.0");
     expect(shared.app.security.assetProtocol.scope).toEqual([]);
     expect(mac.bundle.targets).toEqual(["dmg", "app"]);
     expect(mac.bundle.macOS.minimumSystemVersion).toBe("13.0");
@@ -53,17 +53,15 @@ describe("Windows portable distribution contract", () => {
     );
   });
 
-  it("keeps the v0.4.1 annotation workspace and player UI unchanged", () => {
-    const digest = (path: string) => createHash("sha256")
-      .update(readFileSync(resolve(root, path), "utf8").replaceAll("\r\n", "\n"))
-      .digest("hex");
-
-    expect(digest("src/components/AnnotationWorkspace.tsx")).toBe(
-      "9de6bbcef23b820e2076c67ed76ff6588fcb2830e95f06ad3657a3e5fe5a5aaf",
-    );
-    expect(digest("src/styles.css")).toBe(
-      "73b35cba1148d945d9f3d58d26efa1c160613a3376d4260036eb3db5ec2d0d4d",
-    );
+  it("keeps the native Windows player while exposing only binary decisions", () => {
+    const workspace = read("src/components/AnnotationWorkspace.tsx");
+    expect(workspace).toContain("<video");
+    expect(workspace).toContain("视频进度");
+    expect(workspace).toContain("> True</button>");
+    expect(workspace).toContain("> False");
+    expect(workspace).not.toContain("Question");
+    expect(workspace).not.toContain("Other");
+    expect(workspace).not.toContain("修订英文内容");
     expect(existsSync(resolve(root, "src/media/mpv-client.ts"))).toBe(false);
     expect(existsSync(resolve(root, "src-tauri/src/mpv.rs"))).toBe(false);
   });
@@ -96,14 +94,17 @@ describe("Windows portable distribution contract", () => {
     expect(workflow).toContain("$global:LASTEXITCODE = 0");
     expect(workflow).toContain("Split-Path -Parent $exePath");
     expect(workflow).toContain("release:");
+    expect(workflow).toContain("publish:");
+    expect(workflow).toContain("inputs.publish == true");
+    expect(workflow).toContain("refs/heads/codex/windows-v0.6.0");
     expect(workflow).toContain('--repo "${GITHUB_REPOSITORY}"');
     expect(workflow).toContain("gh release upload");
-    expect(workflow).toContain("gh release create");
-    expect(workflow).toContain("|| true");
-    expect(workflow).toContain('branches: ["codex/windows-v0.4.5"]');
-    expect(workflow).toContain('tags: ["v0.4.5"]');
-    expect(workflow).toContain("视频剧情标注-0.4.5-windows-x64-portable");
-    expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.4.5_windows_x64_portable");
+    expect(workflow).toContain('gh release view "${RELEASE_TAG}"');
+    expect(workflow).not.toContain("gh release create");
+    expect(workflow).toContain('branches: ["codex/windows-v0.6.0"]');
+    expect(workflow).toContain("RELEASE_TAG: v0.6.0");
+    expect(workflow).toContain("视频剧情标注-0.6.0-windows-x64-portable");
+    expect(read("scripts/windows/package-portable.ps1")).toContain("视频剧情标注_0.6.0_windows_x64_portable");
     expect(runtime.version).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
     expect(runtime.architecture).toBe("x64");
     expect(runtime.url).toMatch(/^https:\/\/.*microsoft\.com\//);
@@ -122,9 +123,9 @@ describe("Windows portable distribution contract", () => {
     expect(ignore).toContain("outputs/");
     expect(readme).toContain("scenes_batch_final_caption_zh.jsonl");
     expect(readme).toContain("media-batch/");
-    expect(readme).toContain("仅为全部单元已完成判定的任务生成结果文件");
+    expect(readme).toContain("不再生成 corrected.json");
     expect(readme).toContain(".annotation-workspace");
-    expect(readme).toContain("基于 v0.4.1");
+    expect(readme).toContain("基于 Windows v0.4.5");
     expect(readme).toContain("多音轨");
     expect(read("THIRD_PARTY_NOTICES.txt")).toContain("mp4parse 0.17.0");
   });
