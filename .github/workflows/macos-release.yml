@@ -142,12 +142,13 @@ jobs:
           test -f "release-assets/${SHA_NAME}"
           if ! gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             windows_sha="$(git ls-remote "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" refs/heads/codex/windows-v0.6.0 | cut -f1)"
+            release_notes="$(printf '%s\n\n%s\n%s' \
+              '二分类高速标注与纯审计导出。' \
+              "macOS：基于 v0.4.4，保留 libmpv；构建提交 ${MACOS_BUILD_SHA}。" \
+              "Windows：基于 v0.4.5，保留多音轨检测；构建提交 ${windows_sha:-待 Windows 发布流程补充}。")"
             gh release create "${RELEASE_TAG}" \
               --title "视频剧情标注 ${RELEASE_TAG}" \
-              --notes "二分类高速标注与纯审计导出。
-
-macOS：基于 v0.4.4，保留 libmpv；构建提交 ${MACOS_BUILD_SHA}。
-Windows：基于 v0.4.5，保留多音轨检测；构建提交 ${windows_sha:-待 Windows 发布流程补充}。" \
+              --notes "${release_notes}" \
               --repo "${GITHUB_REPOSITORY}" || true
           fi
           gh release upload "${RELEASE_TAG}" \
